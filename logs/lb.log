@@ -1,0 +1,2 @@
+time=2026-02-22T11:51:57.085+07:00 level=ERROR msg="Failed to init router" service=load-balancer err="failed to read config: read /home/le/Documents/loadbalancer: is a directory"
+time=2026-02-22T11:54:00.271+07:00 level=ERROR msg="Failed to init router" service=load-balancer err="failed to read config: read /home/le/Documents/loadbalancer: is a directory"

@@ -1,0 +1,16 @@
+server:
+  port: 8080
+  health_check_interval: 10s
+  
+load_balancer:
+  strategy: "round_robin"
+
+log:
+  level: "debug"
+
+cache:
+  addr: "localhost:6379"
+  password: ""          
+  db: 0                 
+  pool_size: 10
+  timeout: 5s

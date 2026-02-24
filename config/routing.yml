@@ -1,0 +1,14 @@
+rules:
+  - prefix: "/auth"
+    service_name: "auth-service"
+    strip_prefix: true
+
+  - prefix: "/payment"
+    service_name: "payment-service"
+    strip_prefix: false
+
+  - prefix: "/api/v1/user"
+    service_name: "user-service"
+    strip_prefix: true
+
+default_service: "fallback-service"
