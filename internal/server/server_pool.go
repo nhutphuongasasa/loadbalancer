@@ -59,6 +59,11 @@ func (p *ServerPool) listenUpdates() {
 }
 
 func (p *ServerPool) applyStateChange(srv *model.Server) {
+	p.logger.Debug("Health state changed",
+		"service", srv.ServiceName,
+		"id", srv.InstanceID,
+		"health", srv.Health,
+	)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
