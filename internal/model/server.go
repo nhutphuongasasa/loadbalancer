@@ -26,18 +26,18 @@ type Input struct {
 }
 
 type Server struct {
-	InstanceID    string
-	ServiceName   string
-	Host          string
-	Port          int
-	Health        bool
-	LastHeartbeat time.Time
-	Metadata      map[string]string
-	TTL           time.Duration
-	mux           sync.RWMutex
-	Weight        int
-	proxy         *httputil.ReverseProxy
-	activeConns   int32
+	InstanceID  string
+	ServiceName string
+	Host        string
+	Port        int
+	Health      bool
+	LastSeen    time.Time
+	Metadata    map[string]string
+	TTL         time.Duration
+	mux         sync.RWMutex
+	Weight      int
+	proxy       *httputil.ReverseProxy
+	activeConns int32
 }
 
 func NewServer(
@@ -91,16 +91,16 @@ func NewServer(
 	}
 
 	return &Server{
-		InstanceID:    id,
-		ServiceName:   serviceName,
-		Host:          host,
-		Port:          port,
-		Health:        true,
-		LastHeartbeat: time.Now(),
-		Metadata:      metadata,
-		TTL:           30 * time.Second,
-		Weight:        weight,
-		proxy:         proxy,
+		InstanceID:  id,
+		ServiceName: serviceName,
+		Host:        host,
+		Port:        port,
+		Health:      true,
+		LastSeen:    time.Now(),
+		Metadata:    metadata,
+		TTL:         30 * time.Second,
+		Weight:      weight,
+		proxy:       proxy,
 	}
 }
 
@@ -132,17 +132,17 @@ func (s *Server) IsHealthy() bool {
 	return s.Health
 }
 
-func (s *Server) GetLastHeartbeat() time.Time {
+func (s *Server) GetLastSeen() time.Time {
 	s.mux.RLock()
 	defer s.mux.RUnlock()
-	return s.LastHeartbeat
+	return s.LastSeen
 }
 
 func (s *Server) SetAlive(status bool) {
 	s.mux.Lock()
 	s.Health = status
 	if status {
-		s.LastHeartbeat = time.Now()
+		s.LastSeen = time.Now()
 	}
 	s.mux.Unlock()
 }
@@ -174,4 +174,11 @@ func (s *Server) DecConn() {
 
 func (s *Server) GetActiveConns() int32 {
 	return atomic.LoadInt32(&s.activeConns)
+}
+
+func (s *Server) IsExpired(now time.Time) bool {
+	s.mux.RLock()
+	defer s.mux.RUnlock()
+
+	return now.After(s.LastSeen.Add(s.TTL))
 }

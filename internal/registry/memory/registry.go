@@ -64,33 +64,41 @@ func (r *InMemoryRegistry) UpdateStatus(srv *model.Server, alive bool) {
 	r.mux.Lock()
 	defer r.mux.Unlock()
 
+	//Lay doi tuong instance va kiem ra
 	if instances, ok := r.services[srv.ServiceName]; ok {
 		if existing, exists := instances[srv.InstanceID]; exists {
 			wasHealthy := existing.IsHealthy()
 			existing.SetAlive(alive)
 
-			if wasHealthy != alive {
-				r.updateChan <- existing
-				r.logger.Info("Health state changed",
-					"service", srv.ServiceName,
-					"id", srv.InstanceID,
-					"from", wasHealthy,
-					"to", alive,
-				)
-			}
+			// day vao channel de update server_pool
+			r.updateChan <- existing
+			r.logger.Debug("Health state changed",
+				"service", srv.ServiceName,
+				"id", srv.InstanceID,
+				"from", wasHealthy,
+				"to", alive,
+			)
 		}
 	}
 }
 
+/*
+*Khoi dong tat ca cac dich vu
+ */
 func (r *InMemoryRegistry) Start() {
 	r.startOne.Do(func() {
 		r.ctx, r.cancel = context.WithCancel(context.Background())
 		r.wg.Add(1)
 		go r.ServerGate()
+		r.wg.Add(1)
+		go r.cleanUpServerList()
 		r.logger.Info("Start registry successfully")
 	})
 }
 
+/*
+*Tat tat ca cac dich vu
+ */
 func (i *InMemoryRegistry) Stop() {
 	i.stopOne.Do(func() {
 		if i.cancel != nil {
@@ -102,6 +110,9 @@ func (i *InMemoryRegistry) Stop() {
 	})
 }
 
+/*
+*Cho nhan  thong tin dang ky server moi
+ */
 func (r *InMemoryRegistry) ServerGate() {
 	defer r.wg.Done()
 	for {
@@ -111,6 +122,49 @@ func (r *InMemoryRegistry) ServerGate() {
 		case srv := <-r.providerChannel:
 			r.Register(srv)
 			r.logger.Debug("List of server registry")
+		}
+	}
+}
+
+/*
+*Khoi dong duyet cac server de loai bo server het thoi gian ttl
+ */
+func (r *InMemoryRegistry) cleanUpServerList() {
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+	defer r.wg.Done()
+
+	for {
+		select {
+		case <-ticker.C:
+			r.loopRemoveServers()
+		case <-r.ctx.Done():
+			return
+		}
+	}
+}
+
+/*
+*Duyet danh sach va loai bo server het thoi gian ttl
+ */
+func (r *InMemoryRegistry) loopRemoveServers() {
+	r.mux.Lock()
+	defer r.mux.Unlock()
+
+	now := time.Now()
+
+	for serviceName, instances := range r.services {
+		for instanceID, srv := range instances {
+			if srv.IsExpired(now) {
+				r.logger.Info("Evicting expired server",
+					"service", serviceName,
+					"id", instanceID)
+
+				delete(instances, instanceID)
+			}
+		}
+		if len(instances) == 0 {
+			delete(r.services, serviceName)
 		}
 	}
 }

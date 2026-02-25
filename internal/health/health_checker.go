@@ -42,6 +42,9 @@ func (h *HeathChecker) CheckServers(servers []*model.Server, opts func(srv *mode
 		return
 	}
 
+	/*
+	*Khoi tao sem quan li so luong conuren
+	 */
 	sem := semaphore.NewWeighted(int64(maxConcurrent))
 	var wg sync.WaitGroup
 
@@ -63,19 +66,8 @@ func (h *HeathChecker) CheckServers(servers []*model.Server, opts func(srv *mode
 			s.SetAlive(alive)
 
 			if opts != nil && changed {
+				h.logger.Debug("Status server changed, start running opts func!")
 				opts(s, alive)
-			}
-
-			if !alive {
-				h.logger.Warn("Health check failed (no retry)",
-					"id", s.GetID(),
-					"addr", s.GetAddr(),
-				)
-			} else {
-				h.logger.Debug("Health check OK",
-					"id", s.GetID(),
-					"addr", s.GetAddr(),
-				)
 			}
 		}(srv)
 	}
@@ -97,7 +89,7 @@ func (h *HeathChecker) ping(addr string) bool {
 	resp, err := h.client.Do(req)
 
 	if err != nil {
-		h.logger.Warn("Server is totally down", "addr", addr, "err", err)
+		h.logger.Warn("Server is down", "addr", addr, "err", err)
 		return false
 	}
 

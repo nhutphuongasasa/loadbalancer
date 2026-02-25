@@ -58,7 +58,7 @@ func GetLogger(cfg *config.ConfigManager) *slog.Logger {
 		}
 
 		instance = slog.New(handler).With(
-			slog.String("service", "load-balancer"),
+			slog.String("service", "service java"),
 		)
 	})
 

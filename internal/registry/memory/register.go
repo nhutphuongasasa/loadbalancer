@@ -75,7 +75,7 @@ func (r *InMemoryRegistry) checkServer(srv *model.Server) bool {
 *khoi tao cac thong so co ban va day voa channel cho server pool
  */
 func (r *InMemoryRegistry) setupNewInstance(srv *model.Server) {
-	srv.LastHeartbeat = time.Now()
+	srv.LastSeen = time.Now()
 	srv.Health = true
 	srv.TTL = 30 * time.Second
 
