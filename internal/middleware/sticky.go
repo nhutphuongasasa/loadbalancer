@@ -170,7 +170,7 @@ func (s *stickyManager) getSessionIDFromCookie(r *http.Request) (string, error) 
 func (s *stickyManager) getBackendFromCache(ctx context.Context, sessionID string) ([]*model.ServerPair, string, error) {
 	key := s.cacheKey(sessionID)
 	var result []*model.ServerPair
-	err := s.cache.GetArray(ctx, key, result)
+	err := s.cache.GetArray(ctx, key, &result)
 
 	if err == redis.Nil {
 		return nil, "", nil

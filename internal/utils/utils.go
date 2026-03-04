@@ -1,6 +1,8 @@
 package utils
 
 import (
+	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -30,11 +32,11 @@ func GetRootDir() string {
 
 	return filepath.Dir(exePath)
 }
-
 func GetLogger(cfg *config.ConfigManager) *slog.Logger {
 	once.Do(func() {
 		var level slog.Level
-		switch strings.ToLower(cfg.GetConfig().LogConfig.Level) {
+		logCfg := cfg.GetConfig().LogConfig
+		switch strings.ToLower(logCfg.Level) {
 		case "debug":
 			level = slog.LevelDebug
 		case "warn":
@@ -50,15 +52,24 @@ func GetLogger(cfg *config.ConfigManager) *slog.Logger {
 			AddSource: level == slog.LevelDebug,
 		}
 
-		var handler slog.Handler
-		if strings.ToLower(cfg.GetConfig().LogConfig.Format) == "json" {
-			handler = slog.NewJSONHandler(os.Stdout, opts)
+		logFile, err := os.OpenFile("app.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+		var output io.Writer = os.Stdout // Mặc định là Terminal
+
+		if err == nil {
+			output = io.MultiWriter(os.Stdout, logFile)
 		} else {
-			handler = slog.NewTextHandler(os.Stdout, opts)
+			fmt.Printf("Warning: Could not open log file, logging to stdout only: %v\n", err)
+		}
+
+		var handler slog.Handler
+		if strings.ToLower(logCfg.Format) == "json" {
+			handler = slog.NewJSONHandler(output, opts)
+		} else {
+			handler = slog.NewTextHandler(output, opts)
 		}
 
 		instance = slog.New(handler).With(
-			slog.String("service", "service java"),
+			slog.String("service", "load balancer"),
 		)
 	})
 

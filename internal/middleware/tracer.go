@@ -10,12 +10,10 @@ import (
 	"strings"
 )
 
-// Cấu trúc chính để gom middleware và helpers
 type Tracer struct {
 	logger *slog.Logger
 }
 
-// Context keys
 type ctxKey string
 
 const (
@@ -23,7 +21,6 @@ const (
 	traceCtxKey  ctxKey = "traceContext"
 )
 
-// Common headers
 const (
 	HeaderRequestID   = "X-Request-ID"
 	HeaderTraceParent = "traceparent"
@@ -31,61 +28,32 @@ const (
 	HeaderAmazonTrace = "X-Amzn-Trace-Id"
 )
 
-// TraceContext lưu thông tin trace
 type TraceContext struct {
-	TraceID    string // 32 hex chars
-	SpanID     string // 16 hex chars
-	Flags      byte   // sampled bit: 0x01 = sampled
+	TraceID    string
+	SpanID     string
+	Flags      byte
 	TraceState string
 }
 
-// New tạo Tracer instance với logger được inject
 func NewTracer(logger *slog.Logger) *Tracer {
 	if logger == nil {
-		logger = slog.Default() // fallback nếu nil
+		logger = slog.Default()
 	}
 	return &Tracer{
 		logger: logger,
 	}
 }
 
-// randHex tạo chuỗi hex ngẫu nhiên
-func (t *Tracer) randHex(n int) string {
+/*
+*Tao chuoi ngau nhien de lam trace ID
+ */
+func (t *Tracer) randomHex(n int) string {
 	b := make([]byte, n/2)
-	_, _ = rand.Read(b) // ignore error vì crypto/rand hiếm fail
+	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
 }
 
-// RequestIDMiddleware tạo / extract request ID
-func (t *Tracer) RequestIDMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		reqID := r.Header.Get(HeaderRequestID)
-		if reqID == "" {
-			reqID = r.Header.Get(HeaderAmazonTrace)
-		}
-		if reqID == "" {
-			reqID = t.randHex(32)
-		}
-
-		ctx := context.WithValue(r.Context(), requestIDKey, reqID)
-		w.Header().Set(HeaderRequestID, reqID)
-
-		// Logger với request info
-		reqLogger := t.logger.With(
-			slog.String("request_id", reqID),
-			slog.String("method", r.Method),
-			slog.String("path", r.URL.Path),
-			slog.String("remote_addr", r.RemoteAddr),
-		)
-
-		reqLogger.Info("request started")
-
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
-// TraceContextMiddleware xử lý W3C trace context
-func (t *Tracer) TraceContextMiddleware(next http.Handler) http.Handler {
+func (t *Tracer) CombinedTracingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var tc TraceContext
 
@@ -100,37 +68,32 @@ func (t *Tracer) TraceContextMiddleware(next http.Handler) http.Handler {
 		}
 
 		if tc.TraceID == "" {
-			tc.TraceID = t.randHex(32)
-			tc.SpanID = t.randHex(16)
-			tc.Flags = 0x01 // sampled
-		} else {
-			tc.SpanID = t.randHex(16) // new span cho hop này
+			tc.TraceID = r.Header.Get(HeaderRequestID)
+			if tc.TraceID == "" {
+				tc.TraceID = r.Header.Get(HeaderAmazonTrace)
+			}
 		}
 
+		if tc.TraceID == "" {
+			tc.TraceID = t.randomHex(32)
+			tc.Flags = 0x01
+		}
+
+		tc.SpanID = t.randomHex(16)
 		tc.TraceState = r.Header.Get(HeaderTraceState)
 
-		ctx := context.WithValue(r.Context(), traceCtxKey, tc)
+		t.PropagateTraceHeaders(tc, r)
 
-		// Logger enrich trace info
-		reqLogger := t.logger.With(
+		t.logger.Info("tracing injected",
 			slog.String("trace_id", tc.TraceID),
-			slog.String("span_id", tc.SpanID),
-			slog.Bool("sampled", tc.Flags&0x01 == 0x01),
+			slog.String("path", r.URL.Path),
 		)
 
-		reqLogger.Info("trace context extracted/created")
-
-		next.ServeHTTP(w, r.WithContext(ctx))
+		next.ServeHTTP(w, r)
 	})
 }
 
-// PropagateTraceHeaders inject headers khi forward request xuống backend
-func (t *Tracer) PropagateTraceHeaders(ctx context.Context, req *http.Request) {
-	tc, ok := ctx.Value(traceCtxKey).(TraceContext)
-	if !ok || tc.TraceID == "" {
-		return
-	}
-
+func (t *Tracer) PropagateTraceHeaders(tc TraceContext, req *http.Request) {
 	traceparent := fmt.Sprintf("00-%s-%s-%02x", tc.TraceID, tc.SpanID, tc.Flags)
 	req.Header.Set(HeaderTraceParent, traceparent)
 
@@ -138,12 +101,8 @@ func (t *Tracer) PropagateTraceHeaders(ctx context.Context, req *http.Request) {
 		req.Header.Set(HeaderTraceState, tc.TraceState)
 	}
 
-	if reqID, ok := ctx.Value(requestIDKey).(string); ok && reqID != "" {
-		req.Header.Set(HeaderRequestID, reqID)
-	}
+	req.Header.Set(HeaderRequestID, tc.TraceID)
 }
-
-// Helpers để lấy giá trị từ context (không cần tracer instance)
 
 func RequestIDFromContext(ctx context.Context) string {
 	if v, ok := ctx.Value(requestIDKey).(string); ok {

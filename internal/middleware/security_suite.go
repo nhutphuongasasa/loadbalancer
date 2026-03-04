@@ -2,17 +2,19 @@ package middleware
 
 import (
 	"net/http"
+
+	"github.com/nhutphuongasasa/loadbalancer/internal/middleware/rate_limit"
 )
 
 type SecuritySuite struct {
-	limiter  IRateLimiter
+	limiter  rate_limit.IRateLimiter
 	logger   ILogger
 	stickier IStickier
 	tracer   *Tracer
 }
 
 func NewSecuritySuit(
-	limiter IRateLimiter,
+	limiter rate_limit.IRateLimiter,
 	logger ILogger,
 	stickier IStickier,
 	tracer *Tracer,
@@ -41,14 +43,13 @@ func (s *SecuritySuite) Wrap(next http.Handler) http.Handler {
 	}
 
 	if s.tracer != nil {
-		handler = s.tracer.TraceContextMiddleware(handler)
-		handler = s.tracer.RequestIDMiddleware(handler)
+		handler = s.tracer.CombinedTracingMiddleware(handler)
 	}
 
 	return handler
 }
 
-func (s *SecuritySuite) Limiter() IRateLimiter {
+func (s *SecuritySuite) Limiter() rate_limit.IRateLimiter {
 	return s.limiter
 }
 

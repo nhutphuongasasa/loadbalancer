@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"log/slog"
 
@@ -24,91 +25,169 @@ type RoutingConfig struct {
 }
 
 type PathRouter struct {
-	mu         sync.RWMutex
-	rules      []RouteRule
-	defaultSvc string
-	logger     *slog.Logger
-	viper      *viper.Viper
-	configPath string
+	mu           sync.RWMutex
+	rules        []RouteRule
+	defaultSvc   string
+	logger       *slog.Logger
+	viper        *viper.Viper
+	configPath   string
+	lastReload   time.Time
+	reloadErrors uint64 // de export metric
+	initialized  bool
 }
 
-func NewPathRouter(configPath string, logger *slog.Logger) (*PathRouter, error) {
+// Nhan vao config path doc config, validate, apply config
+func NewPathRouter(baseConfigDir string, logger *slog.Logger) (*PathRouter, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
-	configPath = filepath.Join(configPath, "config")
+	configDir := filepath.Join(baseConfigDir, "config")
+	configPath := filepath.Join(configDir, "routing.yml")
 
 	pr := &PathRouter{
-		logger:     logger,
-		configPath: configPath,
+		logger:      logger,
+		configPath:  configPath,
+		initialized: false,
 	}
 
+	pr.viper = pr.newViper()
+
+	// Load lan dau
+	if err := pr.reloadConfig(); err != nil {
+		return nil, fmt.Errorf("initial config load failed: %w", err)
+	}
+
+	// Watch config với debounce
+	go pr.watchConfigWithDebounce()
+
+	pr.logger.Info("PathRouter initialized",
+		slog.String("config_path", configPath),
+		slog.String("default_service", pr.defaultSvc),
+		slog.Int("initial_rules", len(pr.rules)),
+	)
+
+	return pr, nil
+}
+
+// func (pr *PathRouter) newViper() *viper.Viper {
+// 	v := viper.New()
+// 	v.SetConfigName("routing")
+// 	v.SetConfigType("yml")
+// 	v.AddConfigPath(filepath.Dir(pr.configPath))
+
+// 	v.AutomaticEnv()
+// 	v.SetEnvPrefix("app")
+// 	v.BindEnv("default_service", "APP_DEFAULT_SERVICE")
+
+// 	return v
+// }
+
+func (pr *PathRouter) newViper() *viper.Viper {
 	v := viper.New()
-	v.SetConfigName("routing")
-	v.SetConfigType("yml")
-	v.AddConfigPath(configPath)
+	// Chỉ định chính xác file, không dùng AddConfigPath/SetConfigName
+	v.SetConfigFile(pr.configPath)
 
 	v.AutomaticEnv()
 	v.SetEnvPrefix("app")
 	v.BindEnv("default_service", "APP_DEFAULT_SERVICE")
 
-	pr.viper = v
-
-	if err := pr.reloadConfig(); err != nil {
-		return nil, err
-	}
-
-	go pr.watchConfig()
-
-	pr.logger.Info("PathRouter initialized", "config_path", configPath)
-
-	return pr, nil
+	return v
 }
 
+// Validate va ap dung rule theo config yml
 func (pr *PathRouter) reloadConfig() error {
+	//Doc config
 	if err := pr.viper.ReadInConfig(); err != nil {
-		return fmt.Errorf("failed to read config: %w", err)
+		pr.reloadErrors++
+		return fmt.Errorf("failed to read config file: %w", err)
 	}
 
+	//giai ma config vao struct
 	var cfg RoutingConfig
 	if err := pr.viper.Unmarshal(&cfg); err != nil {
+		pr.reloadErrors++
 		return fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
-	valid, valErr := pr.validateRoutingConfig(&cfg)
-	if !valid {
-		pr.logger.Error("Invalid routing config, keeping previous configuration",
-			slog.Any("validation_errors", valErr),
+	//kiem tra rule chi nem loi khi do la khoi dong lan dau
+	if err := pr.validateRoutingConfig(&cfg); err != nil {
+		if pr.initialized {
+			pr.logger.Error("Invalid config, keeping old rules", "err", err)
+			return nil
+		}
+
+		pr.reloadErrors++
+		pr.logger.Error("Config validation failed - keeping previous config",
+			slog.Any("error", err),
 			slog.String("file", pr.viper.ConfigFileUsed()),
 		)
-		return nil
+		return fmt.Errorf("validation failed (old config kept): %w", err)
 	}
 
 	pr.mu.Lock()
 	pr.rules = cfg.Rules
 	pr.defaultSvc = cfg.DefaultService
+	pr.lastReload = time.Now()
+	pr.initialized = true
 	pr.mu.Unlock()
 
-	pr.logger.Info("Routing config reloaded and validated successfully",
+	pr.logger.Info("Routing config reloaded successfully",
 		slog.Int("rules_count", len(pr.rules)),
-		slog.String("default_svc", pr.defaultSvc),
+		slog.String("default_service", pr.defaultSvc),
+		slog.Time("reloaded_at", pr.lastReload),
 	)
 
 	return nil
 }
 
-func (pr *PathRouter) watchConfig() {
+// Thuc hien theo doi thay doi config va hot reload dam bao du n lan thay doi trong khoang thoi gian debounce chi 1 lan reload
+func (pr *PathRouter) watchConfigWithDebounce() {
 	pr.viper.WatchConfig()
-	pr.viper.OnConfigChange(func(e fsnotify.Event) {
-		pr.logger.Debug("Config changed", "event", e.Op.String(), "file", e.Name)
-		if err := pr.reloadConfig(); err != nil {
-			pr.logger.Error("Reload config failed after change", "err", err)
+
+	//tao debunce timer dung stop de tat no ngay  de tarnh chay go rouinte
+	debounceTimer := time.NewTimer(500 * time.Millisecond)
+	if !debounceTimer.Stop() {
+		<-debounceTimer.C
+	}
+
+	go func() {
+		//dung for doi debounce time de tranh chay nhieu go routine
+		for {
+			<-debounceTimer.C
+			pr.logger.Info("Debounce period ended - reloading config")
+			if err := pr.reloadConfig(); err != nil {
+				pr.logger.Error("Debounced reload failed", "error", err)
+			}
 		}
+	}()
+
+	pr.viper.OnConfigChange(func(e fsnotify.Event) {
+		//bat cac su kien Write/Create/Rename de reload config, bo qua Delete/Chmod
+		if e.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) == 0 {
+			pr.logger.Debug("Ignoring irrelevant fsnotify event", "op", e.Op.String())
+			return
+		}
+
+		pr.logger.Debug("Config change detected", "event", e.Op.String(), "file", e.Name)
+
+		//ham stop se khien timer dung ngay lap tuc va co the luc do du lieu da vao channel
+		//kiem tra xem timer day du lieu vao channel chua
+		//neu co thi lay a  neu chua thi thoi
+		if !debounceTimer.Stop() {
+			select {
+			case <-debounceTimer.C:
+			default:
+				<-debounceTimer.C
+			}
+		}
+		debounceTimer.Reset(500 * time.Millisecond)
 	})
-	pr.logger.Info("Watching routing config for changes")
+
+	pr.logger.Info("Started watching routing config for changes with debounce")
 }
 
+// Match ten server name theo prefix cua path
 func (pr *PathRouter) MatchService(path string) string {
 	pr.mu.RLock()
 	defer pr.mu.RUnlock()
@@ -116,11 +195,14 @@ func (pr *PathRouter) MatchService(path string) string {
 	for _, rule := range pr.rules {
 		if strings.HasPrefix(path, rule.Prefix) {
 			return rule.Service
+		} else if rule.Prefix == "/" && len(pr.rules) == 1 {
+			return rule.Service
 		}
 	}
 	return pr.defaultSvc
 }
 
+// Kiem tra xem rule nao co strip_prefix=true va path match rule do hay khong
 func (pr *PathRouter) GetStripPrefix(path string) bool {
 	pr.mu.RLock()
 	defer pr.mu.RUnlock()

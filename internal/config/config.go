@@ -41,23 +41,6 @@ type CacheConfig struct {
 	Timeout  time.Duration `mapstructure:"timeout"`
 }
 
-// func defaultConfig() *Config {
-// 	return &Config{
-// 		Server: &ServerConfig{
-// 			Port:                8080,
-// 			HealthCheckInterval: "10s",
-// 		},
-// 		Strategy: &StrategyConfig{
-// 			Strategy: "round_robin",
-// 		},
-// 		BackEnds: []*BackEndConfig{},
-// 		LogConfig: &LogConfig{
-// 			Level:  "debug",
-// 			Format: "json",
-// 		},
-// 	}
-// }
-
 func unMarshalConfig(v *viper.Viper) (*Config, error) {
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
