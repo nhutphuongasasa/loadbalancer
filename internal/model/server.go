@@ -74,12 +74,10 @@ func NewServer(
 		req.Header.Set("X-Forwarded-Proto", "https")
 	}
 
-	// Transport (có thể custom timeout, keep-alive, TLS, v.v.)
 	if transport != nil {
 		proxy.Transport = transport
 	}
 
-	// Error handler khi backend down / timeout
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		http.Error(w, "Backend service unreachable or unavailable", http.StatusServiceUnavailable)
 	}

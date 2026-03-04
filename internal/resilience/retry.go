@@ -1,4 +1,3 @@
-// internal/resilience/retry.go
 package resilience
 
 import (

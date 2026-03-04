@@ -12,6 +12,7 @@ import (
 	"github.com/nhutphuongasasa/loadbalancer/internal/registry/provider"
 )
 
+// phai dua redis luu services
 type InMemoryRegistry struct {
 	mux             sync.RWMutex
 	services        map[string]map[string]*model.Server

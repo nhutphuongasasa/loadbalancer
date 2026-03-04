@@ -43,7 +43,7 @@ func (h *HeathChecker) CheckServers(servers []*model.Server, opts func(srv *mode
 	}
 
 	/*
-	*Khoi tao sem quan li so luong conuren
+	*Khoi tao sem quan li so luong conurency
 	 */
 	sem := semaphore.NewWeighted(int64(maxConcurrent))
 	var wg sync.WaitGroup

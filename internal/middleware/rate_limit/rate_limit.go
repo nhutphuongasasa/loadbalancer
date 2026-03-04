@@ -1,9 +1,8 @@
-package middleware
+package rate_limit
 
 import (
 	"context"
 	"log/slog"
-	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -21,9 +20,11 @@ type IRateLimiter interface {
 type ipRateLimiter struct {
 	ips            map[string]*client
 	mux            sync.RWMutex
-	tokenPerSecond rate.Limit //toc do sinh ra token
-	limitBucket    int        //so token
+	tokenPerSecond rate.Limit
+	limitBucket    int
 	cache          *cache.CacheClient
+
+	trustedProxies TrustedProxies
 
 	ctx      context.Context
 	cancel   context.CancelFunc
@@ -39,17 +40,28 @@ type client struct {
 	lastSeen time.Time
 }
 
-type Option func(*ipRateLimiter)
-
-func NewIPRateLimiter(r rate.Limit, b int, logger *slog.Logger) *ipRateLimiter {
-	return &ipRateLimiter{
+func NewIPRateLimiter(r rate.Limit, b int, logger *slog.Logger, opts ...Option) *ipRateLimiter {
+	lim := &ipRateLimiter{
 		ips:            make(map[string]*client),
 		tokenPerSecond: r,
 		limitBucket:    b,
 		logger:         logger,
 	}
+
+	for _, opt := range opts {
+		opt(lim)
+	}
+
+	if lim.logger == nil {
+		lim.logger = slog.Default()
+	}
+
+	return lim
 }
 
+/*
+*Khoi dong IP rate limiter, tao context va goroutine de xoa cac IP khong su dung trong 3 phut
+ */
 func (i *ipRateLimiter) Start() {
 	i.startOne.Do(func() {
 		i.ctx, i.cancel = context.WithCancel(context.Background())
@@ -60,6 +72,9 @@ func (i *ipRateLimiter) Start() {
 	})
 }
 
+/*
+*Top cleanup, huy context va doi cho goroutine ket thuc
+ */
 func (i *ipRateLimiter) Stop() {
 	i.stopOne.Do(func() {
 		if i.cancel != nil {
@@ -71,9 +86,12 @@ func (i *ipRateLimiter) Stop() {
 	})
 }
 
+/*
+*Xoa cac IP khong su dung trong 3 phut, chay moi 60 giay de kiem tra mot lan
+ */
 func (i *ipRateLimiter) cleanUp() {
 	ticker := time.NewTicker(60 * time.Second)
-	// defer ticker.Stop()
+	defer ticker.Stop()
 	defer i.wg.Done()
 	for {
 		select {
@@ -91,6 +109,9 @@ func (i *ipRateLimiter) cleanUp() {
 	}
 }
 
+/*
+*Lay thong tin cua 1 IP neu chua co thi khoi tao doi tuong
+ */
 func (i *ipRateLimiter) GetLimiter(ip string) *client {
 	i.mux.Lock()
 	defer i.mux.Unlock()
@@ -106,40 +127,4 @@ func (i *ipRateLimiter) GetLimiter(ip string) *client {
 
 	value.lastSeen = time.Now()
 	return value
-}
-
-func (i *ipRateLimiter) Middleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := getIpUser(r)
-
-		value := i.GetLimiter(ip)
-
-		if !value.limiter.Allow() {
-			i.logger.Warn("Rate limit exceeded",
-				"ip", ip,
-				"method", r.Method,
-				"path", r.URL.Path,
-				"user_agent", r.UserAgent(),
-			)
-			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
-}
-
-func getIpUser(r *http.Request) string {
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-
-	return ip
-}
-
-func (i *ipRateLimiter) GetStats() int {
-	i.mux.RLock()
-	defer i.mux.RUnlock()
-	return len(i.ips)
 }

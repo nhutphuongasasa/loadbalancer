@@ -1,7 +1,7 @@
 rules:
-  - prefix: "/auth"
-    service_name: "auth-service"
-    strip_prefix: true
+  - prefix: "/java-service"
+    service_name: "java-service"
+    strip_prefix: false
 
   - prefix: "/payment"
     service_name: "payment-service"

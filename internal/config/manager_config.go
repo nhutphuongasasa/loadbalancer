@@ -83,6 +83,7 @@ func (c *ConfigManager) watchConfig() {
 		default:
 			slog.Debug("Config file changed", "event", e.Op.String())
 			c.reloadConfig()
+			//khi co tahy doi va cann thuc hien su kien khi thay doi thi goi onchange
 			if c.onChange != nil {
 				c.onChange(c.config)
 			}
@@ -104,7 +105,7 @@ func (c *ConfigManager) loadConfig(configDir string) {
 
 	v.AutomaticEnv()                            //bat che do quet bien moi turong tu dong
 	v.SetEnvPrefix("app")                       //chi nhan cac bien moi turong co prefix la APP_
-	v.BindEnv("server.port", "APP_SERVER_PORT") //neu moi turong co bien SERVER_PORT thi ghi de no len server.port
+	v.BindEnv("server.port", "APP_SERVER_PORT") //neu moi turong co bien APP_SERVER_PORT thi ghi de no len server.port
 
 	c.viper = v
 

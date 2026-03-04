@@ -1,4 +1,3 @@
-// internal/server/serverpool.go
 package server
 
 import (
@@ -79,20 +78,19 @@ func (p *ServerPool) applyStateChange(srv *model.Server) {
 	oldSub, exists := newMap[svcName]
 
 	var strategy strategies.Strategy
-	var oldBackends []*model.Server // Tạo biến đệm
+	var oldBackends []*model.Server
 
 	if exists {
 		strategy = oldSub.strategy
-		oldBackends = oldSub.backends // Lấy danh sách cũ
+		oldBackends = oldSub.backends
 	} else {
 		strategy = p.strategyFactory(svcName)
-		oldBackends = []*model.Server{} // Service mới thì danh sách cũ rỗng
+		oldBackends = []*model.Server{}
 	}
 
 	newList := make([]*model.Server, 0)
 	found := false
 
-	// Duyệt trên oldBackends an toàn hơn
 	for _, e := range oldBackends {
 		if e.GetID() == srv.GetID() {
 			found = true

@@ -191,7 +191,9 @@ func (a *App) GetHandler() http.Handler {
 		a.logger.Debug("Routed request", "path", r.URL.Path, "service", serviceName, "backend", backend.GetAddr())
 	})
 
-	return a.chainSecurity.Wrap(handler)
+	return handler
+
+	// return a.chainSecurity.Wrap(handler)
 }
 
 func (a *App) GetTLSManager() *tls.ManagerSTL {

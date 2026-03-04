@@ -63,7 +63,8 @@ func (r *InMemoryRegistry) workerLoop(serviceName string, worker *health.HeathCh
 				return
 			}
 
-			r.executeBatchCheck(batch, worker, sem)
+			//phai them goroutine thi moi dung a su dung sem quna li so luong
+			go r.executeBatchCheck(batch, worker, sem)
 		}
 	}
 }
@@ -73,6 +74,7 @@ func (r *InMemoryRegistry) workerLoop(serviceName string, worker *health.HeathCh
  */
 func (r *InMemoryRegistry) extractBatch(serviceName string) []*model.Server {
 	r.mux.RLock()
+
 	instances, ok := r.services[serviceName]
 	if !ok || len(instances) == 0 {
 		r.mux.RUnlock()
@@ -111,6 +113,7 @@ func (r *InMemoryRegistry) extractBatch(serviceName string) []*model.Server {
 
 /*
 *Thuc hien goi ham go routine de tien hanh health check
+*vo li co the truc tiep gui vao channel o heaalthchecker thay vi goi ham update check
  */
 func (r *InMemoryRegistry) executeBatchCheck(batch []*model.Server, worker *health.HeathChecker, sem *semaphore.Weighted) {
 	if err := sem.Acquire(r.ctx, 1); err != nil {
