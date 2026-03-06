@@ -3,20 +3,22 @@ package middleware
 import (
 	"net/http"
 
+	"github.com/nhutphuongasasa/loadbalancer/internal/middleware/logging"
 	"github.com/nhutphuongasasa/loadbalancer/internal/middleware/rate_limit"
+	"github.com/nhutphuongasasa/loadbalancer/internal/middleware/sticky"
 )
 
 type SecuritySuite struct {
 	limiter  rate_limit.IRateLimiter
-	logger   ILogger
-	stickier IStickier
+	logger   logging.ILogger
+	stickier sticky.IStickier
 	tracer   *Tracer
 }
 
 func NewSecuritySuit(
 	limiter rate_limit.IRateLimiter,
-	logger ILogger,
-	stickier IStickier,
+	logger logging.ILogger,
+	stickier sticky.IStickier,
 	tracer *Tracer,
 ) *SecuritySuite {
 	return &SecuritySuite{
@@ -53,11 +55,11 @@ func (s *SecuritySuite) Limiter() rate_limit.IRateLimiter {
 	return s.limiter
 }
 
-func (s *SecuritySuite) Logger() ILogger {
+func (s *SecuritySuite) Logger() logging.ILogger {
 	return s.logger
 }
 
-func (s *SecuritySuite) Stickier() IStickier {
+func (s *SecuritySuite) Stickier() sticky.IStickier {
 	return s.stickier
 }
 

@@ -1,4 +1,4 @@
-package middleware
+package sticky
 
 import (
 	"context"
@@ -40,6 +40,10 @@ const StickyBackendKey contextKey = "sticky_backend_id"
 const CacheKey contextKey = "cache_key"
 
 func NewStickyManager(logger *slog.Logger, cache *cache.CacheClient, ttl ...time.Duration) IStickier {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	sessionTTL := DefaultSessionTTL
 	if len(ttl) > 0 && ttl[0] > 0 {
 		sessionTTL = ttl[0]
@@ -77,6 +81,15 @@ func (s *stickyManager) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
+		if serverPair == nil {
+			s.logger.Warn("Sticky session expired or not found",
+				"session_id", sessionID,
+			)
+			s.clearCookie(w)
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		ctx := context.WithValue(r.Context(), StickyBackendKey, serverPair)
 		ctx = context.WithValue(ctx, CacheKey, cacheKey)
 
@@ -95,6 +108,10 @@ func (s *stickyManager) Middleware(next http.Handler) http.Handler {
 *Tao session luu vao cache set vao cookie
  */
 func (s *stickyManager) SetStickySession(w http.ResponseWriter, serverName, backendId string) error {
+	if serverName == "" || backendId == "" {
+		return errors.New("serverName and backendId must not be empty")
+	}
+
 	sessionID := generateSessionID()
 
 	key := s.cacheKey(sessionID)
@@ -121,7 +138,7 @@ func (s *stickyManager) SetStickySession(w http.ResponseWriter, serverName, back
 		MaxAge:   int(s.sessionTTL.Seconds()),
 	}
 
-	if w.Header().Get("X-Forwarded-Proto") == "https" {
+	if r := w.Header().Get("X-Forwarded-Proto"); r == "https" {
 		cookie.Secure = true
 	}
 
@@ -130,6 +147,7 @@ func (s *stickyManager) SetStickySession(w http.ResponseWriter, serverName, back
 	s.logger.Info("Created new sticky session",
 		"session_id", sessionID,
 		"backend_id", backendId,
+		"server_name", serverName,
 		"ttl_seconds", s.sessionTTL.Seconds(),
 	)
 
@@ -141,12 +159,26 @@ func (s *stickyManager) GetBackendFromContext(r *http.Request) ([]*model.ServerP
 	if val == nil {
 		return nil, false
 	}
+
 	serverPairs, ok := val.([]*model.ServerPair)
 	if !ok {
 		return nil, false
 	}
 
 	return serverPairs, true
+}
+
+func (s *stickyManager) GetCacheKeyFromContext(r *http.Request) string {
+	val := r.Context().Value(CacheKey)
+	if val == nil {
+		return ""
+	}
+	cacheKey, ok := val.(string)
+	if !ok {
+		return ""
+	}
+
+	return cacheKey
 }
 
 func (s *stickyManager) cacheKey(sessionID string) string {
@@ -167,17 +199,18 @@ func (s *stickyManager) getSessionIDFromCookie(r *http.Request) (string, error) 
 	return cookie.Value, nil
 }
 
+// Lay thong tin back end qua cache
 func (s *stickyManager) getBackendFromCache(ctx context.Context, sessionID string) ([]*model.ServerPair, string, error) {
 	key := s.cacheKey(sessionID)
 	var result []*model.ServerPair
-	err := s.cache.GetArray(ctx, key, &result)
 
-	if err == redis.Nil {
+	err := s.cache.GetArray(ctx, key, &result)
+	//session het han khong loi
+	if errors.Is(err, redis.Nil) {
 		return nil, "", nil
 	}
-
 	if err != nil {
-		return nil, "nil", nil
+		return nil, "", err
 	}
 
 	return result, key, nil
@@ -189,15 +222,11 @@ func generateSessionID() string {
 	return hex.EncodeToString(b)
 }
 
-func (s *stickyManager) GetCacheKeyFromContext(r *http.Request) string {
-	val := r.Context().Value(CacheKey)
-	if val == nil {
-		return ""
-	}
-	cacheKey, ok := val.(string)
-	if !ok {
-		return ""
-	}
-
-	return cacheKey
+func (s *stickyManager) clearCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:   s.cookieName,
+		Value:  "",
+		Path:   "/",
+		MaxAge: -1,
+	})
 }

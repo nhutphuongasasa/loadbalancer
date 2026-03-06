@@ -1,4 +1,4 @@
-package middleware
+package logging
 
 import (
 	"log/slog"
@@ -53,7 +53,7 @@ func (l *logManager) Middleware(next http.Handler) http.Handler {
 			slog.String("path", r.URL.Path),
 			slog.String("remote_ip", remoteIP),
 			slog.Int("status", interceptor.statusCode),
-			slog.Int64("latency_us", latency.Microseconds()),
+			slog.Float64("latency_ms", float64(latency.Microseconds())/1000.0),
 			slog.Int64("resp_bytes", interceptor.bytesWritten),
 		}
 
@@ -99,6 +99,9 @@ func (w *responseWriterInterceptor) WriteHeader(code int) {
 * truyen du lieu  va tinh toan dung luong
  */
 func (w *responseWriterInterceptor) Write(b []byte) (int, error) {
+	if !w.writtenHeader {
+		w.WriteHeader(http.StatusOK)
+	}
 	n, err := w.ResponseWriter.Write(b)
 	w.bytesWritten += int64(n)
 	return n, err
