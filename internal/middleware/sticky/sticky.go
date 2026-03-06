@@ -165,6 +165,10 @@ func (s *stickyManager) GetBackendFromContext(r *http.Request) ([]*model.ServerP
 		return nil, false
 	}
 
+	if len(serverPairs) == 0 {
+		return nil, false
+	}
+
 	return serverPairs, true
 }
 
