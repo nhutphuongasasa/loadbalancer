@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/nhutphuongasasa/loadbalancer/internal/cache"
@@ -37,7 +38,15 @@ type ipRateLimiter struct {
 
 type client struct {
 	limiter  *rate.Limiter
-	lastSeen time.Time
+	lastSeen atomic.Int64
+}
+
+func (c *client) updateLastSeen() {
+	c.lastSeen.Store(time.Now().UnixNano())
+}
+
+func (c *client) getLastSeen() time.Time {
+	return time.Unix(0, c.lastSeen.Load())
 }
 
 func NewIPRateLimiter(r rate.Limit, b int, logger *slog.Logger, opts ...Option) *ipRateLimiter {
@@ -93,16 +102,18 @@ func (i *ipRateLimiter) cleanUp() {
 	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
 	defer i.wg.Done()
+
 	for {
 		select {
 		case <-ticker.C:
 			i.mux.Lock()
 			for ip, value := range i.ips {
-				if time.Since(value.lastSeen) > 3*time.Minute {
+				if time.Since(value.getLastSeen()) > 3*time.Minute {
 					delete(i.ips, ip)
 				}
 			}
 			i.mux.Unlock()
+
 		case <-i.ctx.Done():
 			return
 		}
@@ -113,18 +124,31 @@ func (i *ipRateLimiter) cleanUp() {
 *Lay thong tin cua 1 IP neu chua co thi khoi tao doi tuong
  */
 func (i *ipRateLimiter) GetLimiter(ip string) *client {
+	// Thử read trước — nhanh hơn vì nhiều goroutine có thể RLock cùng lúc
+	i.mux.RLock()
+	value, ok := i.ips[ip]
+	i.mux.RUnlock()
+
+	if ok {
+		value.updateLastSeen()
+		return value
+	}
+
+	// Chưa có IP này — cần write lock để tạo mới
 	i.mux.Lock()
 	defer i.mux.Unlock()
 
-	value, ok := i.ips[ip]
-	if !ok {
-		value = &client{
-			limiter:  rate.NewLimiter(i.tokenPerSecond, i.limitBucket),
-			lastSeen: time.Now(),
-		}
-		i.ips[ip] = value
+	// FIX: Check lại sau khi có write lock, tránh trường hợp 2 goroutine
+	// cùng vượt qua RLock rồi cùng tạo mới → goroutine sau ghi đè goroutine trước
+	if value, ok = i.ips[ip]; ok {
+		value.updateLastSeen()
+		return value
 	}
 
-	value.lastSeen = time.Now()
+	value = &client{
+		limiter: rate.NewLimiter(i.tokenPerSecond, i.limitBucket),
+	}
+	value.updateLastSeen()
+	i.ips[ip] = value
 	return value
 }
