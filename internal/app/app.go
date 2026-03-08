@@ -7,13 +7,11 @@ import (
 	"net"
 	"net/http"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/nhutphuongasasa/loadbalancer/internal/cache"
 	"github.com/nhutphuongasasa/loadbalancer/internal/config"
 	"github.com/nhutphuongasasa/loadbalancer/internal/middleware"
-	"github.com/nhutphuongasasa/loadbalancer/internal/model"
 	"github.com/nhutphuongasasa/loadbalancer/internal/registry/memory"
 	"github.com/nhutphuongasasa/loadbalancer/internal/registry/provider"
 	"github.com/nhutphuongasasa/loadbalancer/internal/resilience"
@@ -40,22 +38,26 @@ type App struct {
 
 func NewApp(rootDir string) (*App, error) {
 	cfgManager := initConfigManager(rootDir)
+	cfg := cfgManager.Config
 
-	logger := utils.GetLogger(cfgManager)
+	logger := utils.GetLogger(cfgManager.Config.LogConfig)
 
-	providerServer := provider.NewProviderServer(logger)
+	retryCfg := cfgManager.RetryCfg
 
-	cache, err := cache.NewCacheClient(cfgManager.GetConfig().RedisConfig)
+	routerCfg := cfgManager.RouterCfg
+
+	providerServer := provider.NewProviderServer(retryCfg, logger)
+
+	cache, err := cache.NewCacheClient(cfg.RedisConfig)
 
 	reg := memory.NewInMemoryRegistry(logger, 10*time.Second, providerServer.GetProviderChannel())
 
-	cfg := cfgManager.GetConfig()
 	strategy, err := initStrategy(cfg.Strategy.Strategy, logger)
 	if err != nil {
 		return nil, fmt.Errorf("init strategy failed: %w", err)
 	}
 
-	rt, err := router.NewPathRouter(rootDir, logger)
+	rt, err := router.NewPathRouter(routerCfg, logger)
 	if err != nil {
 		logger.Error("Failed to init router", "err", err)
 		return nil, err
@@ -126,74 +128,6 @@ func (a *App) StopSubService() {
 	a.serverPool.Close()
 
 	a.logger.Info("Shutdown completed")
-}
-
-func (a *App) GetHandler() http.Handler {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		//ap dung rule  duoc cung cap de lay server name
-		serviceName := a.router.MatchService(r.URL.Path)
-		if serviceName == "" {
-			http.Error(w, "No matching service", http.StatusNotFound)
-			a.logger.Warn("No service matched", "path", r.URL.Path)
-			return
-		}
-
-		//lay thong tin cac server name instanceId tu cache nho sessionId
-		var backend *model.Server
-		serverPair, ok := a.chainSecurity.Stickier().GetBackendFromContext(r)
-
-		//khong co thong tin thi set cookie moi
-		if !ok {
-			backend = a.serverPool.PickBackend(serviceName, getClientIP(r))
-			a.chainSecurity.Stickier().SetStickySession(w, serviceName, backend.InstanceID)
-		} else {
-			//cache co chua thong tin ve server name va instanceId
-			for _, v := range serverPair {
-				if v.ServerName == serviceName {
-					backend = a.serverPool.GetInstanceServer(serviceName, v.InstanceId)
-					break
-				}
-			}
-
-			if backend == nil {
-				//cache khong co thong tin ghi them vao cache
-				cacheKey := a.chainSecurity.Stickier().GetCacheKeyFromContext(r)
-				backend = a.serverPool.PickBackend(serviceName, getClientIP(r))
-
-				a.cacheShared.SetArray(a.ctx, cacheKey, append(serverPair, &model.ServerPair{
-					ServerName: serviceName,
-					InstanceId: backend.InstanceID,
-				}), 0)
-			}
-		}
-
-		if backend == nil {
-			http.Error(w, "No healthy backend available", http.StatusServiceUnavailable)
-			a.logger.Warn("No healthy backend", "service", serviceName)
-			return
-		}
-
-		if a.router.GetStripPrefix(r.URL.Path) {
-			r.URL.Path = strings.TrimPrefix(r.URL.Path, "/"+serviceName)
-			r.RequestURI = r.URL.RequestURI()
-		}
-
-		// if a.chainSecurity.Tracer() != nil {
-		// a.chainSecurity.Tracer().PropagateTraceHeaders(r.Context(), r)
-		// }
-
-		a.logger.Debug("Routed request",
-			"trace_id", middleware.TraceContextFromContext(r.Context()).TraceID,
-			"backend", backend.GetAddr(),
-		)
-
-		backend.ServeHTTP(w, r)
-		a.logger.Debug("Routed request", "path", r.URL.Path, "service", serviceName, "backend", backend.GetAddr())
-	})
-
-	return handler
-
-	// return a.chainSecurity.Wrap(handler)
 }
 
 func (a *App) GetTLSManager() *tls.ManagerSTL {

@@ -13,6 +13,7 @@ import (
 	"github.com/nhutphuongasasa/loadbalancer/internal/middleware/logging"
 	"github.com/nhutphuongasasa/loadbalancer/internal/middleware/rate_limit"
 	"github.com/nhutphuongasasa/loadbalancer/internal/middleware/sticky"
+	"github.com/nhutphuongasasa/loadbalancer/internal/middleware/tracer"
 	"github.com/nhutphuongasasa/loadbalancer/internal/tls"
 )
 
@@ -23,7 +24,7 @@ func initSecuritySuite(logger *slog.Logger, cache *cache.CacheClient) *middlewar
 	limiter := rate_limit.NewIPRateLimiter(5, 50, logger)
 	loggerMid := logging.NewLogger(trafficLogger)
 	sticky := sticky.NewStickyManager(securityLogger, cache)
-	tracer := middleware.NewTracer(logger)
+	tracer := tracer.NewTracer(logger)
 
 	return middleware.NewSecuritySuit(limiter, loggerMid, sticky, tracer)
 }

@@ -7,19 +7,22 @@ import (
 	"net/http"
 
 	"log/slog"
+
+	circuitBreaker "github.com/nhutphuongasasa/loadbalancer/internal/resilience/circuitbreaker"
+	"github.com/nhutphuongasasa/loadbalancer/internal/resilience/retry"
 )
 
 type ResilientTransport struct {
 	base        http.RoundTripper
-	breaker     CircuitBreaker
-	retryPolicy RetryPolicy
+	breaker     circuitBreaker.CircuitBreaker
+	retryPolicy retry.RetryPolicy
 	logger      *slog.Logger
 }
 
 func NewResilientTransport(
 	base http.RoundTripper,
-	breaker CircuitBreaker,
-	retryPolicy RetryPolicy,
+	breaker circuitBreaker.CircuitBreaker,
+	retryPolicy retry.RetryPolicy,
 	logger *slog.Logger,
 ) *ResilientTransport {
 	if logger == nil {

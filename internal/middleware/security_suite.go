@@ -6,20 +6,21 @@ import (
 	"github.com/nhutphuongasasa/loadbalancer/internal/middleware/logging"
 	"github.com/nhutphuongasasa/loadbalancer/internal/middleware/rate_limit"
 	"github.com/nhutphuongasasa/loadbalancer/internal/middleware/sticky"
+	"github.com/nhutphuongasasa/loadbalancer/internal/middleware/tracer"
 )
 
 type SecuritySuite struct {
 	limiter  rate_limit.IRateLimiter
 	logger   logging.ILogger
 	stickier sticky.IStickier
-	tracer   *Tracer
+	tracer   *tracer.Tracer
 }
 
 func NewSecuritySuit(
 	limiter rate_limit.IRateLimiter,
 	logger logging.ILogger,
 	stickier sticky.IStickier,
-	tracer *Tracer,
+	tracer *tracer.Tracer,
 ) *SecuritySuite {
 	return &SecuritySuite{
 		limiter:  limiter,
@@ -63,6 +64,6 @@ func (s *SecuritySuite) Stickier() sticky.IStickier {
 	return s.stickier
 }
 
-func (s *SecuritySuite) Tracer() *Tracer {
+func (s *SecuritySuite) Tracer() *tracer.Tracer {
 	return s.tracer
 }

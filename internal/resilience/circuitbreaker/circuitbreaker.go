@@ -1,4 +1,4 @@
-package resilience
+package circuitBreaker
 
 import (
 	"time"

@@ -32,10 +32,10 @@ func GetRootDir() string {
 
 	return filepath.Dir(exePath)
 }
-func GetLogger(cfg *config.ConfigManager) *slog.Logger {
+
+func GetLogger(logCfg *config.LogConfig) *slog.Logger {
 	once.Do(func() {
 		var level slog.Level
-		logCfg := cfg.GetConfig().LogConfig
 		switch strings.ToLower(logCfg.Level) {
 		case "debug":
 			level = slog.LevelDebug

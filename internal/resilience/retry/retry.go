@@ -1,4 +1,4 @@
-package resilience
+package retry
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"log/slog"
+
+	"github.com/nhutphuongasasa/loadbalancer/internal/config"
 )
 
 type RetryPolicy interface {
@@ -25,23 +27,21 @@ type exponentialRetry struct {
 }
 
 func NewExponentialRetry(
-	maxRetries int,
-	baseDelay time.Duration,
-	maxDelay time.Duration,
-	jitterFactor float64,
+	retryCfg *config.RetryConfig,
 	logger *slog.Logger,
 ) *exponentialRetry {
-	if maxRetries < 1 {
-		maxRetries = 3
+
+	if retryCfg.MaxRetries < 1 {
+		retryCfg.MaxRetries = 3
 	}
-	if baseDelay <= 0 {
-		baseDelay = 200 * time.Millisecond
+	if retryCfg.BaseDelay <= 0 {
+		retryCfg.BaseDelay = 200 * time.Millisecond
 	}
-	if maxDelay <= 0 {
-		maxDelay = 5 * time.Second
+	if retryCfg.MaxDelay <= 0 {
+		retryCfg.MaxDelay = 5 * time.Second
 	}
-	if jitterFactor < 0 || jitterFactor > 1 {
-		jitterFactor = 0.1
+	if retryCfg.JitterFactor < 0 || retryCfg.JitterFactor > 1 {
+		retryCfg.JitterFactor = 0.1
 	}
 	if logger == nil {
 		logger = slog.Default()
@@ -52,10 +52,10 @@ func NewExponentialRetry(
 	rng := rand.New(src)
 
 	return &exponentialRetry{
-		maxRetries:   maxRetries,
-		baseDelay:    baseDelay,
-		maxDelay:     maxDelay,
-		jitterFactor: jitterFactor,
+		maxRetries:   retryCfg.MaxRetries,
+		baseDelay:    retryCfg.BaseDelay,
+		maxDelay:     retryCfg.MaxDelay,
+		jitterFactor: retryCfg.JitterFactor,
 		logger:       logger,
 		rng:          rng,
 	}

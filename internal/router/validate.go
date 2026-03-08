@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+
+	"github.com/nhutphuongasasa/loadbalancer/internal/config"
 )
 
 // Kiem tra tinh hop lecua routing config
-func (pr *PathRouter) validateRoutingConfig(cfg *RoutingConfig) error {
+func (pr *PathRouter) validateRoutingConfig(cfg *config.RoutingConfig) error {
 	var errs []string
 
 	prefixSet := make(map[string]struct{})

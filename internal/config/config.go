@@ -41,11 +41,40 @@ type CacheConfig struct {
 	Timeout  time.Duration `mapstructure:"timeout"`
 }
 
-func unMarshalConfig(v *viper.Viper) (*Config, error) {
+type RouteRule struct {
+	Prefix      string `mapstructure:"prefix"`
+	Service     string `mapstructure:"service_name"`
+	StripPrefix bool   `mapstructure:"strip_prefix,omitempty"`
+}
+
+type RoutingConfig struct {
+	Rules          []RouteRule `mapstructure:"rules"`
+	DefaultService string      `mapstructure:"default_service,omitempty"`
+}
+
+type RetryConfig struct {
+	MaxRetries   int           `mapstructure:"max_retries"`
+	BaseDelay    time.Duration `mapstructure:"base_delay"`
+	MaxDelay     time.Duration `mapstructure:"max_delay"`
+	JitterFactor float64       `mapstructure:"jitter_factor"`
+}
+
+func unMarshalConfig(v *viper.Viper) (*Config, *RoutingConfig, *RetryConfig, error) {
 	var cfg Config
+	var routing RoutingConfig
+	var retry RetryConfig
+
 	if err := v.Unmarshal(&cfg); err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 
-	return &cfg, nil
+	if err := v.UnmarshalKey("routing", &routing); err != nil {
+		return nil, nil, nil, err
+	}
+
+	if err := v.UnmarshalKey("retry", &retry); err != nil {
+		return nil, nil, nil, err
+	}
+
+	return &cfg, &routing, &retry, nil
 }

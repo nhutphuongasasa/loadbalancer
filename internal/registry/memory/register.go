@@ -2,12 +2,9 @@ package memory
 
 import (
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/nhutphuongasasa/loadbalancer/internal/model"
-	"github.com/nhutphuongasasa/loadbalancer/internal/registry"
-	"github.com/nhutphuongasasa/loadbalancer/internal/resilience"
 )
 
 //can dam bao lam sao 1 server thuc te chi co 1 instance thoi
@@ -20,7 +17,6 @@ func (r *InMemoryRegistry) Register(srv *model.Server) error {
 	}
 
 	if srv.GetProxy().Transport == nil {
-		r.createResilienceProxy(srv)
 		r.logger.Warn("Fallback resilient transport created for server", "instance", srv.InstanceID)
 	}
 
@@ -37,17 +33,6 @@ func (r *InMemoryRegistry) Register(srv *model.Server) error {
 
 	r.logger.Info("Server registered", "service", srv.ServiceName, "id", srv.InstanceID)
 	return nil
-}
-
-func (r *InMemoryRegistry) createResilienceProxy(srv *model.Server) {
-	breaker := resilience.NewSonyGoBreaker(
-		fmt.Sprintf("cb-default-%s", srv.InstanceID),
-		3, 5*time.Second, 10*time.Second, r.logger,
-	)
-
-	retryPol := resilience.NewExponentialRetry(3, 200*time.Millisecond, 3*time.Second, 0.2, r.logger)
-
-	srv.GetProxy().Transport = resilience.NewResilientTransport(registry.GlobalBaseTransport, breaker, retryPol, r.logger)
 }
 
 /*

@@ -14,3 +14,24 @@ cache:
   db: 0                 
   pool_size: 10
   timeout: 5s
+
+rules:
+  - prefix: "/java-service"
+    service_name: "java-service"
+    strip_prefix: false
+
+  - prefix: "/payment"
+    service_name: "payment-service"
+    strip_prefix: false
+
+  - prefix: "/api/v1/user"
+    service_name: "user-service"
+    strip_prefix: true
+
+default_service: "fallback-service"
+
+retry:
+  max_retries: 5
+  base_delay: 300ms
+  max_delay: 10s
+  jitter_factor: 0.25

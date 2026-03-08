@@ -2,13 +2,18 @@ package provider
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 
 	"github.com/google/uuid"
+	"github.com/nhutphuongasasa/loadbalancer/internal/config"
 	"github.com/nhutphuongasasa/loadbalancer/internal/model"
 	"github.com/nhutphuongasasa/loadbalancer/internal/registry"
+	"github.com/nhutphuongasasa/loadbalancer/internal/resilience"
+	circuitBreaker "github.com/nhutphuongasasa/loadbalancer/internal/resilience/circuitbreaker"
+	"github.com/nhutphuongasasa/loadbalancer/internal/resilience/retry"
 )
 
 type ProviderChannel chan *model.Server
@@ -20,12 +25,14 @@ type ProviderChannel chan *model.Server
 
 type ProviderServer struct {
 	logger              *slog.Logger
+	retryCfg            *config.RetryConfig
 	addNewServerChannel ProviderChannel
 }
 
-func NewProviderServer(logger *slog.Logger) *ProviderServer {
+func NewProviderServer(retryCfg *config.RetryConfig, logger *slog.Logger) *ProviderServer {
 	return &ProviderServer{
 		logger:              logger,
+		retryCfg:            retryCfg,
 		addNewServerChannel: make(ProviderChannel, 10),
 	}
 }
@@ -45,6 +52,7 @@ func (p *ProviderServer) RegisterHTTPHandler() http.Handler {
 			input.ServiceName,
 			input.InstanceID,
 			registry.GlobalBaseTransport,
+			p.retryCfg,
 			p.logger,
 		)
 
@@ -78,6 +86,38 @@ func (p *ProviderServer) RegisterHTTPHandler() http.Handler {
 			},
 		})
 	})
+}
+
+/*
+*Khoi tao http.RoundTripper voi retry circuit breaker
+ */
+func (p *ProviderServer) createResilientTransport(
+	serviceName, instanceID string,
+	baseTransport http.RoundTripper,
+	retryCfg *config.RetryConfig,
+	logger *slog.Logger,
+) http.RoundTripper {
+	breakerName := fmt.Sprintf("cb-%s-%s", serviceName, instanceID)
+
+	breaker := circuitBreaker.NewSonyGoBreaker(
+		breakerName,
+		defaultMaxFailures,
+		defaultTimeout,
+		defaultInterval,
+		logger,
+	)
+
+	retryPol := retry.NewExponentialRetry(
+		retryCfg,
+		logger,
+	)
+
+	return resilience.NewResilientTransport(
+		baseTransport,
+		breaker,
+		retryPol,
+		logger,
+	)
 }
 
 func (p *ProviderServer) checkInfo(w http.ResponseWriter, req *http.Request) (bool, *model.Input) {
