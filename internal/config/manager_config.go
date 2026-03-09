@@ -6,10 +6,12 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/viper"
 )
 
@@ -18,10 +20,15 @@ var (
 	instance *slog.Logger
 )
 
+type ConfigSnapshot struct {
+	Config     *Config
+	Routing    *RoutingConfig
+	Retry      *RetryConfig
+	LastReload time.Time
+}
+
 type ConfigManager struct {
-	Config       *Config
-	RouterCfg    *RoutingConfig
-	RetryCfg     *RetryConfig
+	snapshot     atomic.Pointer[ConfigSnapshot]
 	reloadErrors int
 	viper        *viper.Viper
 	onChange     func(*Config)
@@ -31,7 +38,6 @@ type ConfigManager struct {
 	startOne     sync.Once
 	stopOne      sync.Once
 	wg           sync.WaitGroup
-	lastReload   time.Time
 	firstInitial bool
 	logger       *slog.Logger
 }
@@ -76,156 +82,52 @@ func (m *ConfigManager) Stop() {
 	})
 }
 
-func (c *ConfigManager) GetHealthCheckInterval() time.Duration {
-	duration, err := time.ParseDuration(c.Config.Server.HealthCheckInterval)
-	if err != nil {
-		c.logger.Error("Failed to parse health check interval", "error", err)
-		return 10 * time.Second
-	}
-	return duration
+func (m *ConfigManager) StoreSnapshot(s *ConfigSnapshot) {
+	m.snapshot.Store(s)
 }
 
-func (c *ConfigManager) watchConfigWithDebounce() {
-	defer c.wg.Done()
-
-	c.viper.WatchConfig()
-
-	//tao debunce timer dung stop de tat no ngay  de tarnh chay go rouinte
-	debounceTimer := time.NewTimer(500 * time.Millisecond)
-	if !debounceTimer.Stop() {
-		<-debounceTimer.C
-	}
-
-	go func() {
-		//dung for doi debounce time de tranh chay nhieu go routine
-		for {
-			<-debounceTimer.C
-			c.logger.Info("Debounce period ended - reloading config")
-			if err := c.reloadConfig(); err != nil {
-				c.logger.Error("Debounced reload failed", "error", err)
-			}
-		}
-	}()
-
-	c.viper.OnConfigChange(func(e fsnotify.Event) {
-		//bat cac su kien Write/Create/Rename de reload config, bo qua Delete/Chmod
-		if e.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) == 0 {
-			c.logger.Debug("Ignoring irrelevant fsnotify event", "op", e.Op.String())
-			return
-		}
-
-		c.logger.Debug("Config change detected", "event", e.Op.String(), "file", e.Name)
-
-		//ham stop se khien timer dung ngay lap tuc va co the luc do du lieu da vao channel
-		//kiem tra xem timer day du lieu vao channel chua
-		//neu co thi lay a  neu chua thi thoi
-		if !debounceTimer.Stop() {
-			select {
-			case <-debounceTimer.C:
-			default:
-				<-debounceTimer.C
-			}
-		}
-		debounceTimer.Reset(500 * time.Millisecond)
-	})
-
-	c.logger.Info("Watcher goroutine received signal and is exiting...")
+func (m *ConfigManager) GetSnapshot() *ConfigSnapshot {
+	return m.snapshot.Load()
 }
 
-func (c *ConfigManager) loadConfig(configDir string) {
-	v := viper.New()
-	v.SetConfigName("config")
-	v.SetConfigType("yml")
-	v.AddConfigPath(configDir)
-
-	v.AutomaticEnv()                            //bat che do quet bien moi turong tu dong
-	v.SetEnvPrefix("app")                       //chi nhan cac bien moi turong co prefix la APP_
-	v.BindEnv("server.port", "APP_SERVER_PORT") //neu moi turong co bien APP_SERVER_PORT thi ghi de no len server.port
-
-	c.viper = v
-
-	c.reloadConfig()
-}
-
-func (c *ConfigManager) reloadConfig() error {
-	if err := c.viper.ReadInConfig(); err != nil {
-		c.reloadErrors++
-		c.logger.Error("Failed to read config file, using defaults", "err", err)
-		return err
+func (m *ConfigManager) GetConfig() *Config {
+	if s := m.snapshot.Load(); s != nil {
+		return s.Config
 	}
-
-	cfg, routerCfg, retryCfg, err := unMarshalConfig(c.viper)
-	if err != nil {
-		return err
-	}
-
-	if err = validateConfig(cfg); err != nil {
-		if c.firstInitial {
-			c.reloadErrors++
-			c.logger.Error("Initial config validation failed")
-			os.Exit(1)
-		} else {
-			c.logger.Warn("Invalid config, keeping old base config", "err", err)
-			return err
-		}
-	}
-
-	if err = validateRoutingConfig(routerCfg); err != nil {
-		if c.firstInitial {
-			c.reloadErrors++
-			c.logger.Error("Initial router config validation failed")
-			os.Exit(1)
-
-		} else {
-			c.logger.Error("Invalid config, keeping old rules", "err", err)
-			return err
-		}
-	}
-
-	if retryCfg == nil {
-		c.reloadErrors++
-		c.logger.Warn("Initial retry config validation failed")
-		if c.firstInitial {
-			// retryCfg =
-		}
-	}
-
-	c.mux.Lock()
-	c.Config = cfg
-	c.RouterCfg = routerCfg
-	c.RetryCfg = retryCfg
-	c.lastReload = time.Now()
-	c.mux.Unlock()
-
-	c.logger.Info("Config reloaded successfully")
-
-	c.firstInitial = false
-
 	return nil
 }
 
-func (c *ConfigManager) GetConfig() *Config {
-	c.mux.RLock()
-	defer c.mux.RUnlock()
-	return c.Config
+func (m *ConfigManager) GetRoutingConfig() *RoutingConfig {
+	if s := m.snapshot.Load(); s != nil {
+		return s.Routing
+	}
+	return nil
 }
 
-func (c *ConfigManager) GetRoutingConfig() *RoutingConfig {
-	c.mux.RLock()
-	defer c.mux.RUnlock()
-	return c.RouterCfg
-}
-
-func (c *ConfigManager) GetRetryConfig() *RetryConfig {
-	c.mux.RLock()
-	defer c.mux.RUnlock()
-	return c.RetryCfg
+func (m *ConfigManager) GetRetryConfig() *RetryConfig {
+	if s := m.snapshot.Load(); s != nil {
+		return s.Retry
+	}
+	return nil
 }
 
 func (m *ConfigManager) SetOnChange(fn func(*Config)) {
 	m.mux.Lock()
 	m.onChange = fn
 	m.mux.Unlock()
+}
+
+func (m *ConfigManager) GetHealthCheckInterval() time.Duration {
+	s := m.snapshot.Load()
+	if s == nil || s.Config == nil || s.Config.Server == nil {
+		return 10 * time.Second
+	}
+	d, err := time.ParseDuration(s.Config.Server.HealthCheckInterval)
+	if err != nil {
+		m.logger.Error("parse health interval failed", "err", err)
+		return 10 * time.Second
+	}
+	return d
 }
 
 func getDefaultLogger() *slog.Logger {
@@ -237,8 +139,11 @@ func getDefaultLogger() *slog.Logger {
 			AddSource: level == slog.LevelDebug,
 		}
 
-		logFile, err := os.OpenFile("app.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-		var output io.Writer = os.Stdout // Mặc định là Terminal
+		rootDir := getRootDir()
+		logPath := filepath.Join(rootDir, "app.log")
+
+		logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+		var output io.Writer = os.Stdout
 
 		if err == nil {
 			output = io.MultiWriter(os.Stdout, logFile)
@@ -255,4 +160,19 @@ func getDefaultLogger() *slog.Logger {
 	})
 
 	return instance
+}
+
+func getRootDir() string {
+	_, filename, _, ok := runtime.Caller(0)
+	if ok {
+		return filepath.Dir(filepath.Dir(filepath.Dir(filename)))
+	}
+
+	exePath, err := os.Executable()
+	if err != nil {
+		dir, _ := os.Getwd()
+		return dir
+	}
+
+	return filepath.Dir(exePath)
 }

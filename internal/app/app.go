@@ -38,13 +38,13 @@ type App struct {
 
 func NewApp(rootDir string) (*App, error) {
 	cfgManager := initConfigManager(rootDir)
-	cfg := cfgManager.Config
+	cfg := cfgManager.GetConfig()
 
-	logger := utils.GetLogger(cfgManager.Config.LogConfig)
+	logger := utils.GetLogger(cfgManager.GetSnapshot().Config.LogConfig)
 
-	retryCfg := cfgManager.RetryCfg
+	retryCfg := cfgManager.GetRetryConfig()
 
-	routerCfg := cfgManager.RouterCfg
+	// routerCfg := cfgManager.GetRoutingConfig()
 
 	providerServer := provider.NewProviderServer(retryCfg, logger)
 
@@ -57,7 +57,7 @@ func NewApp(rootDir string) (*App, error) {
 		return nil, fmt.Errorf("init strategy failed: %w", err)
 	}
 
-	rt, err := router.NewPathRouter(routerCfg, logger)
+	rt, err := router.NewPathRouter(cfgManager, logger)
 	if err != nil {
 		logger.Error("Failed to init router", "err", err)
 		return nil, err

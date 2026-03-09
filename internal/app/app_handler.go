@@ -53,7 +53,7 @@ func (a *App) GetHandler() http.Handler {
 			return
 		}
 
-		if a.router.GetStripPrefix(r.URL.Path) {
+		if a.router.StripPrefix(r.URL.Path) {
 			r.URL.Path = strings.TrimPrefix(r.URL.Path, "/"+serviceName)
 			r.RequestURI = r.URL.RequestURI()
 		}

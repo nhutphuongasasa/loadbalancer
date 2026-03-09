@@ -25,7 +25,7 @@ func main() {
 
 	application.StartSubService()
 
-	port := strconv.Itoa(application.GetConfigManager().Config.Server.Port)
+	port := strconv.Itoa(application.GetConfigManager().GetConfig().Server.Port)
 
 	publicServer := &http.Server{
 		Addr:    ":" + port,
