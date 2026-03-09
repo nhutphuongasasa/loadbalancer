@@ -35,3 +35,14 @@ retry:
   base_delay: 300ms
   max_delay: 10s
   jitter_factor: 0.25
+
+rate_limit:
+  enabled: true
+  requests_per_second: 10.0   
+  burst: 20                  
+  cleanup_interval_seconds: 60
+  cleanup_ttl_minutes: 3
+  trusted_proxies:
+    - "127.0.0.1/8"
+    - "10.0.0.0/8"
+    - "192.168.1.1"

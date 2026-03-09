@@ -53,6 +53,10 @@ func (c *ConfigManager) watchConfigWithDebounce() {
 		debounceTimer.Reset(500 * time.Millisecond)
 	})
 
+	c.logger.Info("Watcher goroutine is now active")
+
+	<-c.ctx.Done()
+
 	c.logger.Info("Watcher goroutine received signal and is exiting...")
 }
 
@@ -81,7 +85,7 @@ func (c *ConfigManager) reloadConfig() error {
 		return err
 	}
 
-	cfg, routerCfg, retryCfg, err := unMarshalConfig(c.viper)
+	cfg, routerCfg, retryCfg, rateLimitCfg, err := unMarshalConfig(c.viper)
 	if err != nil {
 		return err
 	}
@@ -117,17 +121,38 @@ func (c *ConfigManager) reloadConfig() error {
 		}
 	}
 
+	// RetryConfig optional — dùng default nếu không có trong file
+	if retryCfg == nil || retryCfg.MaxRetries == 0 {
+		c.logger.Warn("Retry config missing or incomplete, using defaults")
+		retryCfg = &RetryConfig{
+			MaxRetries:   3,
+			BaseDelay:    200 * time.Millisecond,
+			MaxDelay:     5 * time.Second,
+			JitterFactor: 0.1,
+		}
+	}
+
+	// RateLimitConfig optional — dùng default nếu không có
+	if rateLimitCfg == nil || rateLimitCfg.RequestsPerSecond == 0 {
+		c.logger.Warn("Rate limit config missing or incomplete, using defaults")
+		rateLimitCfg = DefaultRateLimitConfig()
+	}
+
 	newSnapshot := &ConfigSnapshot{
 		Config:     cfg,
 		Routing:    routerCfg,
 		Retry:      retryCfg,
+		RateLimit:  rateLimitCfg,
 		LastReload: time.Now(),
 	}
 
 	c.snapshot.Store(newSnapshot)
 
-	c.logger.Info("Config reloaded and atomically swapped successfully",
-		slog.Time("reloaded_at", newSnapshot.LastReload))
+	c.logger.Info("Config reloaded successfully",
+		slog.Time("reloaded_at", newSnapshot.LastReload),
+		slog.Bool("rate_limit_enabled", rateLimitCfg.Enabled),
+		slog.Float64("rps", rateLimitCfg.RequestsPerSecond),
+	)
 
 	c.firstInitial = false
 	return nil

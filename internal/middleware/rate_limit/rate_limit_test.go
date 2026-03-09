@@ -8,11 +8,29 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/time/rate"
+	"github.com/nhutphuongasasa/loadbalancer/internal/config"
 )
 
-func newTestLimiter(r rate.Limit, b int) *ipRateLimiter {
-	lim := NewIPRateLimiter(r, b, nil)
+// ============================================================
+// Helper — stub ConfigManager không cần file config thật
+// ============================================================
+
+func newStubCfgManager(rps float64, burst int) *config.ConfigManager {
+	cm := &config.ConfigManager{}
+	cm.StoreSnapshot(&config.ConfigSnapshot{
+		RateLimit: &config.RateLimitConfig{
+			Enabled:           true,
+			RequestsPerSecond: rps,
+			Burst:             burst,
+			CleanupInterval:   60 * time.Second,
+			CleanupTTL:        3 * time.Minute,
+		},
+	})
+	return cm
+}
+
+func newTestLimiter(rps float64, burst int) *ipRateLimiter {
+	lim := NewIPRateLimiter(newStubCfgManager(rps, burst), nil)
 	lim.Start()
 	return lim
 }
@@ -22,6 +40,10 @@ func okHandler() http.Handler {
 		w.WriteHeader(http.StatusOK)
 	})
 }
+
+// ============================================================
+// TrustedProxies
+// ============================================================
 
 func TestIsTrusted_ExactIP(t *testing.T) {
 	tp := TrustedProxies{"192.168.1.1"}
@@ -63,6 +85,10 @@ func TestIsTrusted_NoPrefixFalsePositive(t *testing.T) {
 	}
 }
 
+// ============================================================
+// RealIP
+// ============================================================
+
 func TestRealIP_NoHeader(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	r.RemoteAddr = "1.2.3.4:5678"
@@ -101,6 +127,10 @@ func TestRealIP_XRealIP_Fallback(t *testing.T) {
 		t.Errorf("got %q, want 9.9.9.9", got)
 	}
 }
+
+// ============================================================
+// GetLimiter
+// ============================================================
 
 func TestGetLimiter_NewIP(t *testing.T) {
 	lim := newTestLimiter(10, 10)
@@ -152,8 +182,48 @@ func TestGetLimiter_ConcurrentAccess(t *testing.T) {
 	wg.Wait()
 }
 
+// TestGetLimiter_HotReload: IP mới sau khi swap config phải dùng rate mới
+func TestGetLimiter_HotReload_NewIPUsesNewConfig(t *testing.T) {
+	cm := newStubCfgManager(10, 10)
+	lim := NewIPRateLimiter(cm, nil)
+	lim.Start()
+	defer lim.Stop()
+
+	// request đầu với config cũ
+	cl1 := lim.GetLimiter("old-ip")
+	if cl1.limiter.Limit() != 10 {
+		t.Fatalf("expected rate 10, got %v", cl1.limiter.Limit())
+	}
+
+	// hot reload: swap sang config mới (rps=50, burst=50)
+	cm.StoreSnapshot(&config.ConfigSnapshot{
+		RateLimit: &config.RateLimitConfig{
+			Enabled:           true,
+			RequestsPerSecond: 50,
+			Burst:             50,
+			CleanupInterval:   60 * time.Second,
+			CleanupTTL:        3 * time.Minute,
+		},
+	})
+
+	// IP cũ vẫn dùng limiter cũ (rate=10) — đúng, không reset đột ngột
+	cl1Again := lim.GetLimiter("old-ip")
+	if cl1Again.limiter.Limit() != 10 {
+		t.Error("existing IP should keep old limiter after config reload")
+	}
+
+	// IP mới phải dùng config mới (rate=50)
+	cl2 := lim.GetLimiter("new-ip")
+	if cl2.limiter.Limit() != 50 {
+		t.Errorf("new IP should use updated rate 50, got %v", cl2.limiter.Limit())
+	}
+}
+
+// ============================================================
+// Middleware
+// ============================================================
+
 func TestMiddleware_AllowsUnderLimit(t *testing.T) {
-	// bucket = 5, rate = 5/s — 3 request đầu phải pass
 	lim := newTestLimiter(5, 5)
 	defer lim.Stop()
 
@@ -199,6 +269,7 @@ func TestMiddleware_429ResponseHeaders(t *testing.T) {
 
 	handler := lim.Middleware(okHandler())
 
+	// exhaust bucket
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	r.RemoteAddr = "1.2.3.4:80"
 	handler.ServeHTTP(httptest.NewRecorder(), r)
@@ -228,7 +299,6 @@ func TestMiddleware_429ResponseBody(t *testing.T) {
 
 	handler := lim.Middleware(okHandler())
 
-	// Exhaust
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	r.RemoteAddr = "1.2.3.4:80"
 	handler.ServeHTTP(httptest.NewRecorder(), r)
@@ -253,6 +323,7 @@ func TestMiddleware_DifferentIPsIndependent(t *testing.T) {
 
 	handler := lim.Middleware(okHandler())
 
+	// exhaust IP A
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	r.RemoteAddr = "1.1.1.1:80"
 	handler.ServeHTTP(httptest.NewRecorder(), r)
@@ -265,6 +336,7 @@ func TestMiddleware_DifferentIPsIndependent(t *testing.T) {
 		t.Fatal("IP A should be rate limited")
 	}
 
+	// IP B không bị ảnh hưởng
 	r = httptest.NewRequest(http.MethodGet, "/", nil)
 	r.RemoteAddr = "2.2.2.2:80"
 	w = httptest.NewRecorder()
@@ -274,36 +346,47 @@ func TestMiddleware_DifferentIPsIndependent(t *testing.T) {
 	}
 }
 
+// ============================================================
+// Start / Stop
+// ============================================================
+
 func TestStartStop(t *testing.T) {
 	lim := newTestLimiter(10, 10)
 	lim.Stop()
 }
 
 func TestStartIdempotent(t *testing.T) {
-	lim := NewIPRateLimiter(10, 10, nil)
+	lim := NewIPRateLimiter(newStubCfgManager(10, 10), nil)
 	lim.Start()
-	lim.Start()
+	lim.Start() // gọi 2 lần — sync.Once đảm bảo chỉ chạy 1 goroutine
 	lim.Stop()
 }
 
 func TestStopIdempotent(t *testing.T) {
 	lim := newTestLimiter(10, 10)
 	lim.Stop()
-	lim.Stop()
+	lim.Stop() // gọi 2 lần — không panic
 }
+
+// ============================================================
+// cleanUp
+// ============================================================
 
 func TestCleanUp_RemovesStaleIPs(t *testing.T) {
 	lim := newTestLimiter(10, 10)
 	defer lim.Stop()
 
 	lim.GetLimiter("stale-ip")
+
+	// giả lập IP đã không dùng 5 phút
 	lim.mux.Lock()
 	lim.ips["stale-ip"].lastSeen.Store(time.Now().Add(-5 * time.Minute).UnixNano())
 	lim.mux.Unlock()
 
+	// trigger cleanup thủ công
 	lim.mux.Lock()
 	for ip, value := range lim.ips {
-		if time.Since(value.getLastSeen()) > 3*time.Minute {
+		if time.Since(value.getLastSeen()) > lim.cleanupTTL {
 			delete(lim.ips, ip)
 		}
 	}
@@ -324,9 +407,10 @@ func TestCleanUp_KeepsFreshIPs(t *testing.T) {
 
 	lim.GetLimiter("fresh-ip")
 
+	// trigger cleanup — fresh-ip vừa được tạo → không bị xóa
 	lim.mux.Lock()
 	for ip, value := range lim.ips {
-		if time.Since(value.getLastSeen()) > 3*time.Minute {
+		if time.Since(value.getLastSeen()) > lim.cleanupTTL {
 			delete(lim.ips, ip)
 		}
 	}

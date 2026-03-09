@@ -17,11 +17,11 @@ import (
 	"github.com/nhutphuongasasa/loadbalancer/internal/tls"
 )
 
-func initSecuritySuite(logger *slog.Logger, cache *cache.CacheClient) *middleware.SecuritySuite {
+func initSecuritySuite(cfgManager *config.ConfigManager, logger *slog.Logger, cache *cache.CacheClient) *middleware.SecuritySuite {
 	trafficLogger := logger.With("module", "TRAFFIC")
 	securityLogger := logger.With("module", "SECURITY")
 
-	limiter := rate_limit.NewIPRateLimiter(5, 50, logger)
+	limiter := rate_limit.NewIPRateLimiter(cfgManager, logger)
 	loggerMid := logging.NewLogger(trafficLogger)
 	sticky := sticky.NewStickyManager(securityLogger, cache)
 	tracer := tracer.NewTracer(logger)

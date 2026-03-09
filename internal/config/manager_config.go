@@ -24,6 +24,7 @@ type ConfigSnapshot struct {
 	Config     *Config
 	Routing    *RoutingConfig
 	Retry      *RetryConfig
+	RateLimit  *RateLimitConfig
 	LastReload time.Time
 }
 
@@ -95,6 +96,13 @@ func (m *ConfigManager) GetConfig() *Config {
 		return s.Config
 	}
 	return nil
+}
+
+func (m *ConfigManager) GetRateLimitConfig() *RateLimitConfig {
+	if s := m.snapshot.Load(); s != nil && s.RateLimit != nil {
+		return s.RateLimit
+	}
+	return DefaultRateLimitConfig()
 }
 
 func (m *ConfigManager) GetRoutingConfig() *RoutingConfig {

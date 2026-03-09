@@ -69,7 +69,7 @@ func NewApp(rootDir string) (*App, error) {
 		strategy,
 	)
 
-	suite := initSecuritySuite(logger, cache)
+	suite := initSecuritySuite(cfgManager, logger, cache)
 
 	certDir := filepath.Join(rootDir, "keys")
 	tlsMgr := initTLSManager(certDir, logger)
