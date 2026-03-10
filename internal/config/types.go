@@ -91,26 +91,57 @@ func DefaultStickySessionConfig() *StickySessionConfig {
 	}
 }
 
-func unMarshalConfig(v *viper.Viper) (*Config, *RoutingConfig, *RetryConfig, *RateLimitConfig, error) {
-	var cfg Config
-	var routing RoutingConfig
-	var retry RetryConfig
-	var rateLimit RateLimitConfig
+type CircuitBreakerConfig struct {
+	MaxConsecutiveFailures uint32        `mapstructure:"max_consecutive_failures"`
+	Timeout                time.Duration `mapstructure:"timeout_seconds"`
+	Interval               time.Duration `mapstructure:"interval_seconds"`
+}
+
+func DefaultCircuitBreakerConfig() *CircuitBreakerConfig {
+	return &CircuitBreakerConfig{
+		MaxConsecutiveFailures: 3,
+		Timeout:                5 * time.Second,
+		Interval:               10 * time.Second,
+	}
+}
+
+type resultConfig struct {
+	config         *Config
+	router         *RoutingConfig
+	retry          *RetryConfig
+	ratelimit      *RateLimitConfig
+	circuitBreaker *CircuitBreakerConfig
+}
+
+func unMarshalConfig(v *viper.Viper) (*resultConfig, error) {
+	var cfg *Config
+	var routing *RoutingConfig
+	var retry *RetryConfig
+	var rateLimit *RateLimitConfig
+	var circuitBreaker *CircuitBreakerConfig
 
 	if err := v.Unmarshal(&cfg); err != nil {
-		return nil, nil, nil, nil, err
+		return nil, err
 	}
 
 	if err := v.UnmarshalKey("routing", &routing); err != nil {
-		return nil, nil, nil, nil, err
+		return nil, err
+
 	}
 
 	if err := v.UnmarshalKey("retry", &retry); err != nil {
-		return nil, nil, nil, nil, err
+		return nil, err
+
 	}
 
 	if err := v.UnmarshalKey("rate_limit", &rateLimit); err != nil {
-		return nil, nil, nil, nil, err
+		return nil, err
+
+	}
+
+	if err := v.UnmarshalKey("circuit_breaker", &circuitBreaker); err != nil {
+		return nil, err
+
 	}
 
 	// cleanup_interval_seconds và cleanup_ttl_minutes là số nguyên trong yaml
@@ -128,5 +159,11 @@ func unMarshalConfig(v *viper.Viper) (*Config, *RoutingConfig, *RetryConfig, *Ra
 		rateLimit.CleanupTTL = rateLimit.CleanupTTL * time.Minute
 	}
 
-	return &cfg, &routing, &retry, &rateLimit, nil
+	return &resultConfig{
+		config:         cfg,
+		router:         routing,
+		retry:          retry,
+		ratelimit:      rateLimit,
+		circuitBreaker: circuitBreaker,
+	}, nil
 }

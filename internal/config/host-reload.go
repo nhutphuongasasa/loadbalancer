@@ -85,12 +85,12 @@ func (c *ConfigManager) reloadConfig() error {
 		return err
 	}
 
-	cfg, routerCfg, retryCfg, rateLimitCfg, err := unMarshalConfig(c.viper)
+	resultCfg, err := unMarshalConfig(c.viper)
 	if err != nil {
 		return err
 	}
 
-	if err = c.validateConfig(cfg); err != nil {
+	if err = c.validateConfig(resultCfg.config); err != nil {
 		if c.firstInitial {
 			c.reloadErrors++
 			c.logger.Error("Initial config validation failed")
@@ -101,7 +101,7 @@ func (c *ConfigManager) reloadConfig() error {
 		}
 	}
 
-	if err = c.validateRoutingConfig(routerCfg); err != nil {
+	if err = c.validateRoutingConfig(resultCfg.router); err != nil {
 		if c.firstInitial {
 			c.reloadErrors++
 			c.logger.Error("Initial router config validation failed")
@@ -113,18 +113,10 @@ func (c *ConfigManager) reloadConfig() error {
 		}
 	}
 
-	if retryCfg == nil {
-		c.reloadErrors++
-		c.logger.Warn("Initial retry config validation failed")
-		if c.firstInitial {
-			// retryCfg =
-		}
-	}
-
 	// RetryConfig optional — dùng default nếu không có trong file
-	if retryCfg == nil || retryCfg.MaxRetries == 0 {
+	if resultCfg.retry == nil || resultCfg.retry.MaxRetries == 0 {
 		c.logger.Warn("Retry config missing or incomplete, using defaults")
-		retryCfg = &RetryConfig{
+		resultCfg.retry = &RetryConfig{
 			MaxRetries:   3,
 			BaseDelay:    200 * time.Millisecond,
 			MaxDelay:     5 * time.Second,
@@ -133,25 +125,31 @@ func (c *ConfigManager) reloadConfig() error {
 	}
 
 	// RateLimitConfig optional — dùng default nếu không có
-	if rateLimitCfg == nil || rateLimitCfg.RequestsPerSecond == 0 {
+	if resultCfg.ratelimit == nil || resultCfg.ratelimit.RequestsPerSecond == 0 {
 		c.logger.Warn("Rate limit config missing or incomplete, using defaults")
-		rateLimitCfg = DefaultRateLimitConfig()
+		resultCfg.ratelimit = DefaultRateLimitConfig()
+	}
+
+	if resultCfg.circuitBreaker == nil {
+		c.logger.Warn("CircuitBreaker config missing or incomplete, using defaults")
+		resultCfg.circuitBreaker = DefaultCircuitBreakerConfig()
 	}
 
 	newSnapshot := &ConfigSnapshot{
-		Config:     cfg,
-		Routing:    routerCfg,
-		Retry:      retryCfg,
-		RateLimit:  rateLimitCfg,
-		LastReload: time.Now(),
+		Config:         resultCfg.config,
+		Routing:        resultCfg.router,
+		Retry:          resultCfg.retry,
+		RateLimit:      resultCfg.ratelimit,
+		CircuitBreaker: resultCfg.circuitBreaker,
+		LastReload:     time.Now(),
 	}
 
 	c.snapshot.Store(newSnapshot)
 
 	c.logger.Info("Config reloaded successfully",
 		slog.Time("reloaded_at", newSnapshot.LastReload),
-		slog.Bool("rate_limit_enabled", rateLimitCfg.Enabled),
-		slog.Float64("rps", rateLimitCfg.RequestsPerSecond),
+		slog.Bool("rate_limit_enabled", resultCfg.ratelimit.Enabled),
+		slog.Float64("rps", resultCfg.ratelimit.RequestsPerSecond),
 	)
 
 	c.firstInitial = false

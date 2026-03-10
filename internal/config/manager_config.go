@@ -21,12 +21,13 @@ var (
 )
 
 type ConfigSnapshot struct {
-	Config        *Config
-	Routing       *RoutingConfig
-	Retry         *RetryConfig
-	RateLimit     *RateLimitConfig
-	StickySession *StickySessionConfig
-	LastReload    time.Time
+	Config         *Config
+	Routing        *RoutingConfig
+	Retry          *RetryConfig
+	RateLimit      *RateLimitConfig
+	StickySession  *StickySessionConfig
+	CircuitBreaker *CircuitBreakerConfig
+	LastReload     time.Time
 }
 
 type ConfigManager struct {
@@ -96,18 +97,25 @@ func (m *ConfigManager) GetStickySessionConfig() *StickySessionConfig {
 	return m.snapshot.Load().StickySession
 }
 
-func (m *ConfigManager) GetConfig() *Config {
-	if s := m.snapshot.Load(); s != nil {
-		return s.Config
-	}
-	return nil
-}
-
 func (m *ConfigManager) GetRateLimitConfig() *RateLimitConfig {
 	if s := m.snapshot.Load(); s != nil && s.RateLimit != nil {
 		return s.RateLimit
 	}
 	return DefaultRateLimitConfig()
+}
+
+func (m *ConfigManager) GetCircuitBreakerConfig() *CircuitBreakerConfig {
+	if s := m.snapshot.Load(); s != nil && s.CircuitBreaker != nil {
+		return s.CircuitBreaker
+	}
+	return DefaultCircuitBreakerConfig()
+}
+
+func (m *ConfigManager) GetConfig() *Config {
+	if s := m.snapshot.Load(); s != nil {
+		return s.Config
+	}
+	return nil
 }
 
 func (m *ConfigManager) GetRoutingConfig() *RoutingConfig {

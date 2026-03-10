@@ -43,10 +43,9 @@ func NewApp(rootDir string) (*App, error) {
 	logger := utils.GetLogger(cfgManager.GetSnapshot().Config.LogConfig)
 
 	retryCfg := cfgManager.GetRetryConfig()
+	cbCfg := cfgManager.GetCircuitBreakerConfig()
 
-	// routerCfg := cfgManager.GetRoutingConfig()
-
-	providerServer := provider.NewProviderServer(retryCfg, logger)
+	providerServer := provider.NewProviderServer(retryCfg, cbCfg, logger)
 
 	cache, err := cache.NewCacheClient(cfg.RedisConfig)
 

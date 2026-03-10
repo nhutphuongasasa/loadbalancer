@@ -50,3 +50,8 @@ rate_limit:
 sticky_session:
   cookie_name: "lb_sid"
   ttl_seconds: 3600
+
+circuit_breaker:
+  max_consecutive_failures: 3
+  timeout_seconds: 5
+  interval_seconds: 10
