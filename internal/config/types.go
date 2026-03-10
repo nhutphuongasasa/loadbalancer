@@ -79,6 +79,18 @@ func DefaultRateLimitConfig() *RateLimitConfig {
 	}
 }
 
+type StickySessionConfig struct {
+	CookieName string        `mapstructure:"cookie_name"`
+	TTL        time.Duration `mapstructure:"ttl_seconds"`
+}
+
+func DefaultStickySessionConfig() *StickySessionConfig {
+	return &StickySessionConfig{
+		CookieName: "lb_sid",
+		TTL:        3600 * time.Second,
+	}
+}
+
 func unMarshalConfig(v *viper.Viper) (*Config, *RoutingConfig, *RetryConfig, *RateLimitConfig, error) {
 	var cfg Config
 	var routing RoutingConfig
@@ -101,10 +113,12 @@ func unMarshalConfig(v *viper.Viper) (*Config, *RoutingConfig, *RetryConfig, *Ra
 		return nil, nil, nil, nil, err
 	}
 
-	// viper đọc số nguyên (60) thành 60 nanoseconds — cần convert sang seconds
+	// cleanup_interval_seconds và cleanup_ttl_minutes là số nguyên trong yaml
+	// viper unmarshal thành int64 nanoseconds nếu dùng time.Duration trực tiếp — cần convert
 	if rateLimit.CleanupInterval == 0 {
 		rateLimit.CleanupInterval = DefaultRateLimitConfig().CleanupInterval
 	} else if rateLimit.CleanupInterval < time.Second {
+		// viper đọc số nguyên (60) thành 60 nanoseconds — cần convert sang seconds
 		rateLimit.CleanupInterval = rateLimit.CleanupInterval * time.Second
 	}
 

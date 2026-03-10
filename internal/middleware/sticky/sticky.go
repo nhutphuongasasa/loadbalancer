@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/nhutphuongasasa/loadbalancer/internal/cache"
+	"github.com/nhutphuongasasa/loadbalancer/internal/config"
 	"github.com/nhutphuongasasa/loadbalancer/internal/model"
 	"github.com/redis/go-redis/v9"
 )
@@ -29,29 +30,41 @@ type stickyManager struct {
 }
 
 const (
-	StickyCookieName  = "lb_sid"
-	RedisKeyPrefix    = "lb:sticky:"
-	DefaultSessionTTL = 3600 * time.Second
+	RedisKeyPrefix = "lb:sticky:"
 )
 
 type contextKey string
 
-const StickyBackendKey contextKey = "sticky_backend_id"
-const CacheKey contextKey = "cache_key"
+const (
+	StickyBackendKey contextKey = "sticky_backend_id"
+	CacheKey         contextKey = "cache_key"
+)
 
-func NewStickyManager(logger *slog.Logger, cache *cache.CacheClient, ttl ...time.Duration) IStickier {
+// NewStickyManager nhận StickySessionConfig từ ConfigManager.
+// TTL và cookieName chỉ đọc 1 lần lúc init — không cần hot reload vì:
+// - TTL chỉ áp dụng khi tạo session mới, không ảnh hưởng session đã tồn tại
+// - cookieName thay đổi giữa chừng sẽ làm mất toàn bộ session đang chạy
+func NewStickyManager(cfg *config.StickySessionConfig, logger *slog.Logger, cache *cache.CacheClient) IStickier {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	if cfg == nil {
+		cfg = config.DefaultStickySessionConfig()
+	}
 
-	sessionTTL := DefaultSessionTTL
-	if len(ttl) > 0 && ttl[0] > 0 {
-		sessionTTL = ttl[0]
+	ttl := cfg.TTL
+	if ttl <= 0 {
+		ttl = config.DefaultStickySessionConfig().TTL
+	}
+
+	cookieName := cfg.CookieName
+	if cookieName == "" {
+		cookieName = config.DefaultStickySessionConfig().CookieName
 	}
 
 	return &stickyManager{
-		cookieName: StickyCookieName,
-		sessionTTL: sessionTTL,
+		cookieName: cookieName,
+		sessionTTL: ttl,
 		logger:     logger,
 		cache:      cache,
 	}
@@ -67,16 +80,11 @@ func (s *stickyManager) Middleware(next http.Handler) http.Handler {
 
 		serverPair, cacheKey, err := s.getBackendFromCache(r.Context(), sessionID)
 		if err != nil {
-			s.logger.Warn("Sticky session invalid or expired",
+			s.logger.Warn("Sticky session lookup failed",
 				"session_id", sessionID,
 				"err", err,
 			)
-			http.SetCookie(w, &http.Cookie{
-				Name:   s.cookieName,
-				Value:  "",
-				Path:   "/",
-				MaxAge: -1,
-			})
+			s.clearCookie(w)
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -92,7 +100,6 @@ func (s *stickyManager) Middleware(next http.Handler) http.Handler {
 
 		ctx := context.WithValue(r.Context(), StickyBackendKey, serverPair)
 		ctx = context.WithValue(ctx, CacheKey, cacheKey)
-
 		r = r.WithContext(ctx)
 
 		s.logger.Debug("Sticky session hit",
@@ -104,18 +111,13 @@ func (s *stickyManager) Middleware(next http.Handler) http.Handler {
 	})
 }
 
-/*
-*Tao session luu vao cache set vao cookie
- */
 func (s *stickyManager) SetStickySession(w http.ResponseWriter, serverName, backendId string) error {
 	if serverName == "" || backendId == "" {
 		return errors.New("serverName and backendId must not be empty")
 	}
 
 	sessionID := generateSessionID()
-
 	key := s.cacheKey(sessionID)
-
 	ctx := context.Background()
 
 	fields := []*model.ServerPair{
@@ -159,16 +161,10 @@ func (s *stickyManager) GetBackendFromContext(r *http.Request) ([]*model.ServerP
 	if val == nil {
 		return nil, false
 	}
-
 	serverPairs, ok := val.([]*model.ServerPair)
-	if !ok {
+	if !ok || len(serverPairs) == 0 {
 		return nil, false
 	}
-
-	if len(serverPairs) == 0 {
-		return nil, false
-	}
-
 	return serverPairs, true
 }
 
@@ -181,7 +177,6 @@ func (s *stickyManager) GetCacheKeyFromContext(r *http.Request) string {
 	if !ok {
 		return ""
 	}
-
 	return cacheKey
 }
 
@@ -203,15 +198,13 @@ func (s *stickyManager) getSessionIDFromCookie(r *http.Request) (string, error) 
 	return cookie.Value, nil
 }
 
-// Lay thong tin back end qua cache
 func (s *stickyManager) getBackendFromCache(ctx context.Context, sessionID string) ([]*model.ServerPair, string, error) {
 	key := s.cacheKey(sessionID)
 	var result []*model.ServerPair
 
 	err := s.cache.GetArray(ctx, key, &result)
-	//session het han khong loi
 	if errors.Is(err, redis.Nil) {
-		return nil, "", nil
+		return nil, "", nil // session hết hạn — không phải lỗi
 	}
 	if err != nil {
 		return nil, "", err
@@ -221,7 +214,7 @@ func (s *stickyManager) getBackendFromCache(ctx context.Context, sessionID strin
 }
 
 func generateSessionID() string {
-	b := make([]byte, 16) // 128 bit
+	b := make([]byte, 16)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
 }

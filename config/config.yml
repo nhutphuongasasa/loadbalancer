@@ -46,3 +46,7 @@ rate_limit:
     - "127.0.0.1/8"
     - "10.0.0.0/8"
     - "192.168.1.1"
+
+sticky_session:
+  cookie_name: "lb_sid"
+  ttl_seconds: 3600

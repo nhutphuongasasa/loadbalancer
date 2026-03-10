@@ -23,7 +23,7 @@ func initSecuritySuite(cfgManager *config.ConfigManager, logger *slog.Logger, ca
 
 	limiter := rate_limit.NewIPRateLimiter(cfgManager, logger)
 	loggerMid := logging.NewLogger(trafficLogger)
-	sticky := sticky.NewStickyManager(securityLogger, cache)
+	sticky := sticky.NewStickyManager(cfgManager.GetStickySessionConfig(), securityLogger, cache)
 	tracer := tracer.NewTracer(logger)
 
 	return middleware.NewSecuritySuit(limiter, loggerMid, sticky, tracer)

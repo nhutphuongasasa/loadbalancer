@@ -21,11 +21,12 @@ var (
 )
 
 type ConfigSnapshot struct {
-	Config     *Config
-	Routing    *RoutingConfig
-	Retry      *RetryConfig
-	RateLimit  *RateLimitConfig
-	LastReload time.Time
+	Config        *Config
+	Routing       *RoutingConfig
+	Retry         *RetryConfig
+	RateLimit     *RateLimitConfig
+	StickySession *StickySessionConfig
+	LastReload    time.Time
 }
 
 type ConfigManager struct {
@@ -89,6 +90,10 @@ func (m *ConfigManager) StoreSnapshot(s *ConfigSnapshot) {
 
 func (m *ConfigManager) GetSnapshot() *ConfigSnapshot {
 	return m.snapshot.Load()
+}
+
+func (m *ConfigManager) GetStickySessionConfig() *StickySessionConfig {
+	return m.snapshot.Load().StickySession
 }
 
 func (m *ConfigManager) GetConfig() *Config {
