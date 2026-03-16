@@ -1,84 +1,114 @@
 package strategies
 
 import (
-	"math"
 	"sync"
 
 	"github.com/nhutphuongasasa/loadbalancer/internal/model"
 )
 
-type WeightedServer struct {
-	server          *model.Server
-	effectiveWeight int // điều chỉnh theo health
-	currentWeight   int // biến đổi trong quá trình chọn
+type wrrEntry struct {
+	server  *model.Server
+	weight  int64
+	current int64 // plain int64, không cần atomic
+}
+
+type view struct {
+	entries     []*wrrEntry
+	totalWeight int64
 }
 
 type WeightedRoundRobin struct {
-	mu sync.Mutex // bảo vệ danh sách weighted servers nếu cần rebuild
+	mu   sync.Mutex // bảo vệ cả Pick lẫn Update
+	view *view      // plain pointer, không cần atomic.Pointer
 }
 
 func NewWeightedRoundRobin() Strategy {
 	return &WeightedRoundRobin{}
 }
 
-// Pick chọn server theo smooth weighted round-robin
-func (w *WeightedRoundRobin) Pick(backends []*model.Server, _ string) *model.Server {
-	if len(backends) == 0 {
-		return nil
-	}
+// Update: chỉ chạy ở single-writer (applyStateChange)
+func (w *WeightedRoundRobin) Update(backends []*model.Server) {
+	entries := make([]*wrrEntry, 0, len(backends))
+	var total int64
 
-	var totalWeight int
-	weighted := make([]*WeightedServer, 0, len(backends))
+	// Build new view + preserve currentWeight (giữ smoothness)
+	oldView := func() *view {
+		w.mu.Lock()
+		v := w.view
+		w.mu.Unlock()
+		return v
+	}()
+
+	preserve := make(map[string]int64, len(backends))
+	if oldView != nil {
+		for _, e := range oldView.entries {
+			preserve[e.server.GetID()] = e.current
+		}
+	}
 
 	for _, s := range backends {
 		if !s.IsHealthy() {
-			continue // hoặc giảm weight thay vì skip hoàn toàn
+			continue
+		}
+		wt := int64(s.GetWeight())
+		if wt <= 0 {
+			wt = 1
+		}
+		total += wt
+
+		entry := &wrrEntry{
+			server:  s,
+			weight:  wt,
+			current: 0,
+		}
+		if oldCW, ok := preserve[s.GetID()]; ok {
+			entry.current = oldCW
 		}
 
-		weight := s.GetWeight()
-		if weight <= 0 {
-			weight = 1
-		}
-
-		ws := &WeightedServer{
-			server:          s,
-			effectiveWeight: weight,
-			currentWeight:   weight, // khởi tạo ban đầu = weight
-		}
-		weighted = append(weighted, ws)
-		totalWeight += ws.effectiveWeight
+		entries = append(entries, entry)
 	}
 
-	if len(weighted) == 0 || totalWeight == 0 {
-		// fallback: chọn server đầu tiên hoặc random, tùy bạn
-		if len(backends) > 0 {
-			return backends[0]
-		}
-		return nil
+	newView := &view{
+		entries:     entries,
+		totalWeight: total,
 	}
 
-	var best *WeightedServer
-	var bestCurrentWeight = math.MinInt
+	// Swap view dưới lock để tránh race với Pick
+	w.mu.Lock()
+	w.view = newView
+	w.mu.Unlock()
+}
 
+// Pick: hoàn toàn đúng toán học, không drift, lock time cực ngắn
+func (w *WeightedRoundRobin) Pick(_ string) *model.Server {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	// Tăng currentWeight cho tất cả và tìm max
-	for _, ws := range weighted {
-		ws.currentWeight += ws.effectiveWeight
-
-		if ws.currentWeight > bestCurrentWeight {
-			best = ws
-			bestCurrentWeight = ws.currentWeight
-		}
-	}
-
-	if best == nil {
+	v := w.view
+	if v == nil || len(v.entries) == 0 {
 		return nil
 	}
 
-	// Chọn và trừ tổng weight để "smooth"
-	best.currentWeight -= totalWeight
+	// Fast path: chỉ 1 server
+	if len(v.entries) == 1 {
+		return v.entries[0].server
+	}
+
+	// === TOÁN HỌC SMOOTH WRR ĐÚNG 100% ===
+	var best *wrrEntry
+	bestVal := int64(-1 << 63) // MinInt64
+
+	for _, e := range v.entries {
+		e.current += e.weight // plain += (nhanh, không atomic)
+		if e.current > bestVal {
+			bestVal = e.current
+			best = e
+		}
+	}
+
+	if best != nil {
+		best.current -= v.totalWeight
+	}
 
 	return best.server
 }

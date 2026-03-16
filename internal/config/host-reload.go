@@ -47,7 +47,7 @@ func (c *ConfigManager) watchConfigWithDebounce() {
 			select {
 			case <-debounceTimer.C:
 			default:
-				<-debounceTimer.C
+				// <-debounceTimer.C
 			}
 		}
 		debounceTimer.Reset(500 * time.Millisecond)

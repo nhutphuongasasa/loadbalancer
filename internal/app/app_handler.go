@@ -72,7 +72,7 @@ func (a *App) GetHandler() http.Handler {
 		a.logger.Debug("Routed request", "path", r.URL.Path, "service", serviceName, "backend", backend.GetAddr())
 	})
 
-	return handler
+	// return handler
 
-	// return a.chainSecurity.Wrap(handler)
+	return a.chainSecurity.Wrap(handler)
 }

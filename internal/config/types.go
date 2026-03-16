@@ -53,10 +53,19 @@ type RoutingConfig struct {
 }
 
 type RetryConfig struct {
-	MaxRetries   int           `mapstructure:"max_retries"`
-	BaseDelay    time.Duration `mapstructure:"base_delay"`
-	MaxDelay     time.Duration `mapstructure:"max_delay"`
-	JitterFactor float64       `mapstructure:"jitter_factor"`
+	MaxRetries   int           `mapstructure:"retry:max_retries"`
+	BaseDelay    time.Duration `mapstructure:"retry:base_delay"`
+	MaxDelay     time.Duration `mapstructure:"retry:max_delay"`
+	JitterFactor float64       `mapstructure:"retry:jitter_factor"`
+}
+
+func DefaultRetryConfig() *RetryConfig {
+	return &RetryConfig{
+		MaxRetries:   3,
+		BaseDelay:    200 * time.Millisecond,
+		MaxDelay:     3 * time.Second,
+		JitterFactor: 0.2,
+	}
 }
 
 type RateLimitConfig struct {
@@ -124,24 +133,36 @@ func unMarshalConfig(v *viper.Viper) (*resultConfig, error) {
 		return nil, err
 	}
 
-	if err := v.UnmarshalKey("routing", &routing); err != nil {
+	if err := v.Unmarshal(&routing); err != nil {
 		return nil, err
 
 	}
 
-	if err := v.UnmarshalKey("retry", &retry); err != nil {
-		return nil, err
-
+	retrySub := v.Sub("retry")
+	if retrySub != nil {
+		if err := retrySub.Unmarshal(&retry); err != nil {
+			return nil, err
+		}
+	} else {
+		retry = DefaultRetryConfig()
 	}
 
-	if err := v.UnmarshalKey("rate_limit", &rateLimit); err != nil {
-		return nil, err
-
+	rateLimitSub := v.Sub("rate_limit")
+	if rateLimitSub != nil {
+		if err := rateLimitSub.Unmarshal(&rateLimit); err != nil {
+			return nil, err
+		}
+	} else {
+		rateLimit = DefaultRateLimitConfig()
 	}
 
-	if err := v.UnmarshalKey("circuit_breaker", &circuitBreaker); err != nil {
-		return nil, err
-
+	circuitBreakerSub := v.Sub("circuit_breaker")
+	if circuitBreakerSub != nil {
+		if err := circuitBreakerSub.Unmarshal(&circuitBreaker); err != nil {
+			return nil, err
+		}
+	} else {
+		circuitBreaker = DefaultCircuitBreakerConfig()
 	}
 
 	// cleanup_interval_seconds và cleanup_ttl_minutes là số nguyên trong yaml
