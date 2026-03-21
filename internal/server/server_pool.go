@@ -57,15 +57,16 @@ func (p *ServerPool) listenUpdates() {
 	}
 }
 
+/*
+ham update thong tin nhom server khi co 1 server thay doi state
+khong can lock o day vi listienUPdate dam bao khi applyStateChange chay xong moi den thnag khac (do su ket hop select va channel)
+*/
 func (p *ServerPool) applyStateChange(srv *model.Server) {
 	p.logger.Debug("Health state changed",
 		"service", srv.ServiceName,
 		"id", srv.InstanceID,
 		"health", srv.Health,
 	)
-
-	p.mu.Lock()
-	defer p.mu.Unlock()
 
 	//sao chep du lieu ra slice
 	currentPtr := p.healthyAtomic.Load().(*map[string]*subPool)
@@ -118,7 +119,6 @@ func (p *ServerPool) applyStateChange(srv *model.Server) {
 		newList = append(newList, srv)
 	}
 
-	// Heavy lifting chỉ chạy ở đây (single writer)
 	strategy.Update(newList)
 
 	newMap[svcName] = &subPool{

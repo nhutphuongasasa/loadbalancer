@@ -7,9 +7,9 @@ import (
 )
 
 type wrrEntry struct {
-	server  *model.Server
-	weight  int64
-	current int64 // plain int64, không cần atomic
+	server        *model.Server
+	weight        int64
+	currentWeight int64
 }
 
 type view struct {
@@ -18,20 +18,19 @@ type view struct {
 }
 
 type WeightedRoundRobin struct {
-	mu   sync.Mutex // bảo vệ cả Pick lẫn Update
-	view *view      // plain pointer, không cần atomic.Pointer
+	mu   sync.Mutex
+	view *view
 }
 
 func NewWeightedRoundRobin() Strategy {
 	return &WeightedRoundRobin{}
 }
 
-// Update: chỉ chạy ở single-writer (applyStateChange)
+// thay doi danh sach server
 func (w *WeightedRoundRobin) Update(backends []*model.Server) {
 	entries := make([]*wrrEntry, 0, len(backends))
 	var total int64
 
-	// Build new view + preserve currentWeight (giữ smoothness)
 	oldView := func() *view {
 		w.mu.Lock()
 		v := w.view
@@ -39,13 +38,17 @@ func (w *WeightedRoundRobin) Update(backends []*model.Server) {
 		return v
 	}()
 
+	//luu 1 ban sao current weight cua cac server
 	preserve := make(map[string]int64, len(backends))
 	if oldView != nil {
 		for _, e := range oldView.entries {
-			preserve[e.server.GetID()] = e.current
+			preserve[e.server.GetID()] = e.currentWeight
 		}
 	}
 
+	//duyet danh sach backend moi nhat duoc cap nhat
+	//dua current weight cu vao neu khong co trong danh sach cu thi khoi tao current bang 0
+	//dua vao dnah sach entries
 	for _, s := range backends {
 		if !s.IsHealthy() {
 			continue
@@ -57,12 +60,12 @@ func (w *WeightedRoundRobin) Update(backends []*model.Server) {
 		total += wt
 
 		entry := &wrrEntry{
-			server:  s,
-			weight:  wt,
-			current: 0,
+			server:        s,
+			weight:        wt,
+			currentWeight: 0,
 		}
 		if oldCW, ok := preserve[s.GetID()]; ok {
-			entry.current = oldCW
+			entry.currentWeight = oldCW
 		}
 
 		entries = append(entries, entry)
@@ -73,13 +76,12 @@ func (w *WeightedRoundRobin) Update(backends []*model.Server) {
 		totalWeight: total,
 	}
 
-	// Swap view dưới lock để tránh race với Pick
+	// Swap view trong lock de tranh race
 	w.mu.Lock()
 	w.view = newView
 	w.mu.Unlock()
 }
 
-// Pick: hoàn toàn đúng toán học, không drift, lock time cực ngắn
 func (w *WeightedRoundRobin) Pick(_ string) *model.Server {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -89,25 +91,27 @@ func (w *WeightedRoundRobin) Pick(_ string) *model.Server {
 		return nil
 	}
 
-	// Fast path: chỉ 1 server
+	// Fast path khi chi co 1 server
 	if len(v.entries) == 1 {
 		return v.entries[0].server
 	}
 
-	// === TOÁN HỌC SMOOTH WRR ĐÚNG 100% ===
+	//khoi tao bien bestVal dung for de kiem gia tri lon nhat
+	//sau do tru cho tong weight cua ca cum server de no quay ve current weight thap
+	//viec chon total weight la co chung minh toan hoc no la 1 con so tot
 	var best *wrrEntry
 	bestVal := int64(-1 << 63) // MinInt64
 
 	for _, e := range v.entries {
-		e.current += e.weight // plain += (nhanh, không atomic)
-		if e.current > bestVal {
-			bestVal = e.current
+		e.currentWeight += e.weight
+		if e.currentWeight > bestVal {
+			bestVal = e.currentWeight
 			best = e
 		}
 	}
 
 	if best != nil {
-		best.current -= v.totalWeight
+		best.currentWeight -= v.totalWeight
 	}
 
 	return best.server

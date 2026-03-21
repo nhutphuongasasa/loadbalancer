@@ -89,14 +89,18 @@ func DefaultRateLimitConfig() *RateLimitConfig {
 }
 
 type StickySessionConfig struct {
-	CookieName string        `mapstructure:"cookie_name"`
-	TTL        time.Duration `mapstructure:"ttl_seconds"`
+	CookieName    string        `mapstructure:"cookie_name"`
+	TTL           time.Duration `mapstructure:"ttl_seconds"`
+	Secure        bool          `mapstructure:"secure"`
+	EncryptionKey []byte        `mapstructure:"encryption_key"`
 }
 
 func DefaultStickySessionConfig() *StickySessionConfig {
 	return &StickySessionConfig{
-		CookieName: "lb_sid",
-		TTL:        3600 * time.Second,
+		CookieName:    "lb_sid",
+		TTL:           3600 * time.Second,
+		Secure:        true,
+		EncryptionKey: []byte("passphrasewith32bytescharacters!"),
 	}
 }
 
@@ -128,6 +132,7 @@ func unMarshalConfig(v *viper.Viper) (*resultConfig, error) {
 	var retry *RetryConfig
 	var rateLimit *RateLimitConfig
 	var circuitBreaker *CircuitBreakerConfig
+	var sticky *StickySessionConfig
 
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, err
@@ -135,7 +140,15 @@ func unMarshalConfig(v *viper.Viper) (*resultConfig, error) {
 
 	if err := v.Unmarshal(&routing); err != nil {
 		return nil, err
+	}
 
+	stickySub := v.Sub("sticky_session")
+	if stickySub != nil {
+		if err := stickySub.Unmarshal(&sticky); err != nil {
+			return nil, err
+		}
+	} else {
+		sticky = DefaultStickySessionConfig()
 	}
 
 	retrySub := v.Sub("retry")
