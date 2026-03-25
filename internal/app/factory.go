@@ -25,6 +25,7 @@ func initSecuritySuite(cfgManager *config.ConfigManager, logger *slog.Logger, ca
 	loggerMid := logging.NewLogger(trafficLogger)
 	sticky, err := sticky.NewStickyManager(cfgManager.GetStickySessionConfig(), securityLogger)
 	if err != nil {
+		slog.Error("Error in security suite", "err", err)
 		os.Exit(1)
 	}
 	tracer := tracer.NewTracer(logger)

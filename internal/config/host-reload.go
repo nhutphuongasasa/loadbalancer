@@ -87,6 +87,7 @@ func (c *ConfigManager) reloadConfig() error {
 
 	resultCfg, err := unMarshalConfig(c.viper)
 	if err != nil {
+		c.logger.Error("Failed to unmarshall config")
 		return err
 	}
 
@@ -113,27 +114,32 @@ func (c *ConfigManager) reloadConfig() error {
 		}
 	}
 
-	// RetryConfig optional — dùng default nếu không có trong file
-	if resultCfg.retry == nil || resultCfg.retry.MaxRetries == 0 {
-		c.logger.Warn("Retry config missing or incomplete, using defaults")
-		resultCfg.retry = &RetryConfig{
-			MaxRetries:   3,
-			BaseDelay:    200 * time.Millisecond,
-			MaxDelay:     5 * time.Second,
-			JitterFactor: 0.1,
-		}
-	}
+	// // RetryConfig optional — dùng default nếu không có trong file
+	// if resultCfg.retry == nil || resultCfg.retry.MaxRetries == 0 {
+	// 	c.logger.Warn("Retry config missing or incomplete, using defaults")
+	// 	resultCfg.retry = &RetryConfig{
+	// 		MaxRetries:   3,
+	// 		BaseDelay:    200 * time.Millisecond,
+	// 		MaxDelay:     5 * time.Second,
+	// 		JitterFactor: 0.1,
+	// 	}
+	// }
 
-	// RateLimitConfig optional — dùng default nếu không có
-	if resultCfg.ratelimit == nil || resultCfg.ratelimit.RequestsPerSecond == 0 {
-		c.logger.Warn("Rate limit config missing or incomplete, using defaults")
-		resultCfg.ratelimit = DefaultRateLimitConfig()
-	}
+	// // RateLimitConfig optional — dùng default nếu không có
+	// if resultCfg.ratelimit == nil || resultCfg.ratelimit.RequestsPerSecond == 0 {
+	// 	c.logger.Warn("Rate limit config missing or incomplete, using defaults")
+	// 	resultCfg.ratelimit = DefaultRateLimitConfig()
+	// }
 
-	if resultCfg.circuitBreaker == nil {
-		c.logger.Warn("CircuitBreaker config missing or incomplete, using defaults")
-		resultCfg.circuitBreaker = DefaultCircuitBreakerConfig()
-	}
+	// if resultCfg.circuitBreaker == nil {
+	// 	c.logger.Warn("CircuitBreaker config missing or incomplete, using defaults")
+	// 	resultCfg.circuitBreaker = DefaultCircuitBreakerConfig()
+	// }
+
+	// if resultCfg.sticky == nil {
+	// 	c.logger.Warn("Sticky config missing or incomplete, using defaults")
+	// 	resultCfg.sticky = DefaultStickySessionConfig()
+	// }
 
 	newSnapshot := &ConfigSnapshot{
 		Config:         resultCfg.config,
@@ -141,6 +147,7 @@ func (c *ConfigManager) reloadConfig() error {
 		Retry:          resultCfg.retry,
 		RateLimit:      resultCfg.ratelimit,
 		CircuitBreaker: resultCfg.circuitBreaker,
+		StickySession:  resultCfg.sticky,
 		LastReload:     time.Now(),
 	}
 

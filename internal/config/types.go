@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log/slog"
 	"time"
 
 	"github.com/spf13/viper"
@@ -92,7 +93,14 @@ type StickySessionConfig struct {
 	CookieName    string        `mapstructure:"cookie_name"`
 	TTL           time.Duration `mapstructure:"ttl_seconds"`
 	Secure        bool          `mapstructure:"secure"`
-	EncryptionKey []byte        `mapstructure:"encryption_key"`
+	EncryptionKey []byte
+}
+
+type stickyInternal struct {
+	CookieName    string        `mapstructure:"cookie_name"`
+	TTL           time.Duration `mapstructure:"ttl_seconds"`
+	Secure        bool          `mapstructure:"secure"`
+	EncryptionKey string        `mapstructure:"encryption_key"`
 }
 
 func DefaultStickySessionConfig() *StickySessionConfig {
@@ -124,6 +132,7 @@ type resultConfig struct {
 	retry          *RetryConfig
 	ratelimit      *RateLimitConfig
 	circuitBreaker *CircuitBreakerConfig
+	sticky         *StickySessionConfig
 }
 
 func unMarshalConfig(v *viper.Viper) (*resultConfig, error) {
@@ -135,46 +144,66 @@ func unMarshalConfig(v *viper.Viper) (*resultConfig, error) {
 	var sticky *StickySessionConfig
 
 	if err := v.Unmarshal(&cfg); err != nil {
+		slog.Error("Failed to unmarshall config")
 		return nil, err
 	}
 
 	if err := v.Unmarshal(&routing); err != nil {
+		slog.Error("Failed to unmarshall routing")
 		return nil, err
 	}
 
 	stickySub := v.Sub("sticky_session")
 	if stickySub != nil {
-		if err := stickySub.Unmarshal(&sticky); err != nil {
+		var si stickyInternal
+		if err := stickySub.Unmarshal(&si); err != nil {
 			return nil, err
 		}
+		sticky = &StickySessionConfig{
+			CookieName:    si.CookieName,
+			TTL:           si.TTL,
+			Secure:        si.Secure,
+			EncryptionKey: []byte(si.EncryptionKey),
+		}
+
+		if sticky.TTL > 0 && sticky.TTL < time.Second {
+			sticky.TTL = sticky.TTL * time.Second
+		}
 	} else {
+		slog.Info("Use default sticky config")
 		sticky = DefaultStickySessionConfig()
 	}
 
 	retrySub := v.Sub("retry")
 	if retrySub != nil {
 		if err := retrySub.Unmarshal(&retry); err != nil {
+			slog.Warn("Failed to unmarshall retry")
 			return nil, err
 		}
 	} else {
+		slog.Info("use default retry config")
 		retry = DefaultRetryConfig()
 	}
 
 	rateLimitSub := v.Sub("rate_limit")
 	if rateLimitSub != nil {
 		if err := rateLimitSub.Unmarshal(&rateLimit); err != nil {
+			slog.Warn("Failed to unmarshall rate limit")
 			return nil, err
 		}
 	} else {
+		slog.Info("Use default rate limit")
 		rateLimit = DefaultRateLimitConfig()
 	}
 
 	circuitBreakerSub := v.Sub("circuit_breaker")
 	if circuitBreakerSub != nil {
 		if err := circuitBreakerSub.Unmarshal(&circuitBreaker); err != nil {
+			slog.Warn("Failed to unmarshall circuit breaker")
 			return nil, err
 		}
 	} else {
+		slog.Info("Use default circuit breaker")
 		circuitBreaker = DefaultCircuitBreakerConfig()
 	}
 
@@ -192,12 +221,13 @@ func unMarshalConfig(v *viper.Viper) (*resultConfig, error) {
 	} else if rateLimit.CleanupTTL < time.Minute {
 		rateLimit.CleanupTTL = rateLimit.CleanupTTL * time.Minute
 	}
-
-	return &resultConfig{
+	result := &resultConfig{
 		config:         cfg,
 		router:         routing,
 		retry:          retry,
 		ratelimit:      rateLimit,
 		circuitBreaker: circuitBreaker,
-	}, nil
+		sticky:         sticky,
+	}
+	return result, nil
 }

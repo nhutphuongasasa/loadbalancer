@@ -38,8 +38,8 @@ retry:
 
 rate_limit:
   enabled: true
-  requests_per_second: 10.0   
-  burst: 20                  
+  requests_per_second: 1000.0   
+  burst: 1000                  
   cleanup_interval_seconds: 60
   cleanup_ttl_minutes: 3
   trusted_proxies:
@@ -49,9 +49,9 @@ rate_limit:
 
 sticky_session:
   cookie_name: "lb_sticky_id"
-  ttl_seconds: "30" 
+  ttl_seconds: 30s
   secure: true
-  encryption_key: "this-is-a-secret-key-32-chars!!"
+  encryption_key: "@phuong-ikoooooo"
 
 circuit_breaker:
   max_consecutive_failures: 3

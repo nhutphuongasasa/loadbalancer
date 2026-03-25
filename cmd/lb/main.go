@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -47,6 +49,7 @@ func main() {
 
 	go func() {
 		slog.Info("Load balancer is starting", "port", port)
+		printServerIPs("Public", port)
 		if err := publicServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("Server error", "error", err)
 			os.Exit(1)
@@ -82,4 +85,21 @@ func main() {
 	}
 
 	slog.Info("Load Balancer exited gracefully")
+}
+
+func printServerIPs(name string, port string) {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return
+	}
+	// Thêm tên Server để phân biệt Public hay Registry
+	fmt.Printf("🌐 [%s] is listening on:\n", name)
+	for _, address := range addrs {
+		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				// Thêm dấu : giữa IP và Port
+				fmt.Printf("   🔗 http://%s:%s\n", ipnet.IP.String(), port)
+			}
+		}
+	}
 }
