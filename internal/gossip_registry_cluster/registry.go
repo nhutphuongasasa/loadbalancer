@@ -9,7 +9,22 @@ import (
 	"github.com/hashicorp/memberlist"
 )
 
-// GossipRegistry join cluster, lắng nghe events và bridge sang RegistryAdapter
+/*
+Package gossip_registry cung cap kha nang quan ly Cluster cho cac node Load Balancer.
+
+File nay thuc hien cac nhiem vu chinh:
+1. Khoi tao Memberlist: Su dung giao thuc SWIM (Gossip) de tu dong phat hien cac node trong cum.
+2. Quan ly vong doi: Cho phep mot node tham gia (Start/Join) hoac roi khoi (Stop/Leave) cluster mot cach an toan.
+3. Dong bo trang thai: Cung cap phuong thuc BroadcastHealthChange de lan truyen thong tin ve suc khoe
+   cua cac backend service toi tat ca cac node LB khac trong he thong.
+4. Bridge Events: Ket noi cac su kien tu mang luoi (Join, Leave, Update) sang RegistryAdapter
+   de cap nhat routing table thoi gian thuc.
+
+Cach hoat dong:
+- Su dung UDP de "Gossip" (don thoi) trang thai node nhanh chong.
+- Su dung TCP de dong bo toan bo danh sach thanh vien khi moi gia nhap.
+*/
+
 type GossipRegistry struct {
 	cfg      *memberlist.Config
 	list     *memberlist.Memberlist
@@ -27,7 +42,7 @@ type Options struct {
 	Logger   *slog.Logger
 }
 
-func New(opts Options, registry RegistryAdapter) *GossipRegistry {
+func NewGossipRegistry(opts Options, registry RegistryAdapter) *GossipRegistry {
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
 	}
