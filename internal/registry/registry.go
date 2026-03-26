@@ -8,7 +8,7 @@ import (
 	"github.com/nhutphuongasasa/loadbalancer/internal/model"
 )
 
-type Registry interface {
+type RegistryAdapter interface {
 	Register(srv *model.Server) error
 	Deregister(serviceName, instanceID string) error
 

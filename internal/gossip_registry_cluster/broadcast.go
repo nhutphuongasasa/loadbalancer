@@ -8,6 +8,7 @@ import (
 
 	"github.com/hashicorp/memberlist"
 	"github.com/nhutphuongasasa/loadbalancer/internal/model"
+	"github.com/nhutphuongasasa/loadbalancer/internal/registry"
 )
 
 // healthBroadcast implement memberlist.Broadcast
@@ -17,8 +18,8 @@ type healthBroadcast struct {
 	notify chan struct{}
 }
 
+// Nếu 2 msg cùng InstanceID thì msg mới invalidate msg cũ
 func (b *healthBroadcast) Invalidates(other memberlist.Broadcast) bool {
-	// Nếu 2 msg cùng InstanceID thì msg mới invalidate msg cũ
 	var thisMsg, otherMsg HealthMsg
 	_ = json.Unmarshal(b.msg, &thisMsg)
 
@@ -42,11 +43,11 @@ func (b *healthBroadcast) Finished() {
 type broadcastQueue struct {
 	mu       sync.Mutex
 	queue    *memberlist.TransmitLimitedQueue
-	registry RegistryAdapter
+	registry registry.RegistryAdapter
 	logger   *slog.Logger
 }
 
-func newBroadcastQueue(registry RegistryAdapter, log *slog.Logger) *broadcastQueue {
+func newBroadcastQueue(registry registry.RegistryAdapter, log *slog.Logger) *broadcastQueue {
 	q := &broadcastQueue{
 		registry: registry,
 		logger:   log,

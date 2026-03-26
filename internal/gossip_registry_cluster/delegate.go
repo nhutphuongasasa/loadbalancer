@@ -7,25 +7,24 @@ import (
 
 	"github.com/hashicorp/memberlist"
 	"github.com/nhutphuongasasa/loadbalancer/internal/model"
+	"github.com/nhutphuongasasa/loadbalancer/internal/registry"
 )
 
-// RegistryAdapter là interface tối giản mà GossipRegistry cần
-// từ InMemoryRegistry — giúp dễ test/mock.
-type RegistryAdapter interface {
-	Register(srv *model.Server) error
-	Deregister(serviceName, instanceID string) error
-	UpdateStatus(srv *model.Server, alive bool)
-}
+// type RegistryAdapter interface {
+// 	Register(srv *model.Server) error
+// 	Deregister(serviceName, instanceID string) error
+// 	UpdateStatus(srv *model.Server, alive bool)
+// }
 
 // EventDelegate implement memberlist.EventDelegate
 // Nhận NotifyJoin / NotifyLeave / NotifyUpdate từ cluster
 type EventDelegate struct {
-	registry RegistryAdapter
+	registry registry.RegistryAdapter
 	queue    *broadcastQueue // để broadcast health msg khi cần
 	logger   *slog.Logger
 }
 
-func newEventDelegate(r RegistryAdapter, q *broadcastQueue, log *slog.Logger) *EventDelegate {
+func newEventDelegate(r registry.RegistryAdapter, q *broadcastQueue, log *slog.Logger) *EventDelegate {
 	return &EventDelegate{registry: r, queue: q, logger: log}
 }
 

@@ -14,10 +14,11 @@ Cu the file nay xu ly:
 - Helper functions: Ho tro viec dong goi (Marshal) va giai ma (Unmarshal) du lieu JSON.
 */
 
-// NodeMeta phai khop voi struct Meta ben sidecar-agent
+// NodeMeta phai khop voi struct Meta ben sidecar-agent de nhan thong tin tuong ung
 type NodeMeta struct {
-	Role string `json:"role"`
-	Port int    `json:"port"`
+	Role   string `json:"role"`
+	Weight int    `json:"weight"`
+	Port   int    `json:"port"`
 }
 
 // HealthMsg la message broadcast giua cac LB node
@@ -41,11 +42,13 @@ func parseMeta(raw []byte) (*NodeMeta, bool) {
 	return &m, true
 }
 
+// helper chueyn health message thanh byte
 func encodeHealthMsg(msg HealthMsg) []byte {
 	b, _ := json.Marshal(msg)
 	return b
 }
 
+// helper chuyen byte thanh health message struct
 func decodeHealthMsg(b []byte) (*HealthMsg, bool) {
 	var msg HealthMsg
 	if err := json.Unmarshal(b, &msg); err != nil {

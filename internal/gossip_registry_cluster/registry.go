@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/hashicorp/memberlist"
+	"github.com/nhutphuongasasa/loadbalancer/internal/registry"
 )
 
 /*
@@ -25,24 +26,26 @@ Cach hoat dong:
 - Su dung TCP de dong bo toan bo danh sach thanh vien khi moi gia nhap.
 */
 
+// struct quan li clsuter
 type GossipRegistry struct {
-	cfg      *memberlist.Config
-	list     *memberlist.Memberlist
-	delegate *EventDelegate
-	queue    *broadcastQueue
+	cfg      *memberlist.Config     //cau hinh chung cu memberlist
+	list     *memberlist.Memberlist //danh sach cac member
+	delegate *EventDelegate         //xu li su kien join leave update
+	queue    *broadcastQueue        //hang doi day thong bao broatcast health change
 
 	mu       sync.Mutex
 	isJoined bool
 	logger   *slog.Logger
 }
 
+// thong tin cua cac node lb
 type Options struct {
 	NodeName string
 	BindPort int
 	Logger   *slog.Logger
 }
 
-func NewGossipRegistry(opts Options, registry RegistryAdapter) *GossipRegistry {
+func NewGossipRegistry(opts Options, registry registry.RegistryAdapter) *GossipRegistry {
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
 	}
@@ -118,7 +121,7 @@ func (g *GossipRegistry) BroadcastHealthChange(instanceID, svcName string, alive
 	g.queue.BroadcastHealthChange(instanceID, svcName, alive)
 }
 
-// Members trả về số node hiện tại trong cluster (debug/metrics)
+// helper tar ve so node hien tai khong cluster
 func (g *GossipRegistry) Members() int {
 	g.mu.Lock()
 	defer g.mu.Unlock()
