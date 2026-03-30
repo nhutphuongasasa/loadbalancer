@@ -61,21 +61,21 @@ func NewInMemoryRegistry(logger *slog.Logger, checkInterval time.Duration, provi
 /*
 * ham thuc hien update lao thong tin instance co trong danh sach
  */
-func (r *InMemoryRegistry) UpdateStatus(srv *model.Server, alive bool) {
+func (r *InMemoryRegistry) UpdateStatus(serviceName, instanceID string, alive bool) {
 	r.mux.Lock()
 	defer r.mux.Unlock()
 
 	//Lay doi tuong instance va kiem ra
-	if instances, ok := r.services[srv.ServiceName]; ok {
-		if existing, exists := instances[srv.InstanceID]; exists {
+	if instances, ok := r.services[serviceName]; ok {
+		if existing, exists := instances[instanceID]; exists {
 			wasHealthy := existing.IsHealthy()
 			existing.SetAlive(alive)
 
 			// day vao channel de update server_pool
 			r.updateChan <- existing
 			r.logger.Debug("Health state changed",
-				"service", srv.ServiceName,
-				"id", srv.InstanceID,
+				"service", serviceName,
+				"id", instanceID,
 				"from", wasHealthy,
 				"to", alive,
 			)

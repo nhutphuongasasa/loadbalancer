@@ -37,7 +37,7 @@ func NewHeathChecker(logger *slog.Logger) *HeathChecker {
 /*
 *Nhan dnah sach cna check tu registry  va ham update dnah sach
  */
-func (h *HeathChecker) CheckServers(servers []*model.Server, opts func(srv *model.Server, alive bool)) {
+func (h *HeathChecker) CheckServers(servers []*model.Server, opts func(serviceName, instanceID string, alive bool)) {
 	if len(servers) == 0 {
 		return
 	}
@@ -67,7 +67,7 @@ func (h *HeathChecker) CheckServers(servers []*model.Server, opts func(srv *mode
 
 			if opts != nil && changed {
 				h.logger.Debug("Status server changed, start running opts func!")
-				opts(s, alive)
+				opts(s.ServiceName, s.InstanceID, alive)
 			}
 		}(srv)
 	}

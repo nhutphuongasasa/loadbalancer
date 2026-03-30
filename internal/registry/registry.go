@@ -12,11 +12,14 @@ type RegistryAdapter interface {
 	Register(srv *model.Server) error
 	Deregister(serviceName, instanceID string) error
 
-	UpdateStatus(srv *model.Server, alive bool)
+	// UpdateStatus(srv *model.Server, alive bool)
+	UpdateStatus(serviceName, instanceID string, alive bool)
 
 	Discover(ctx context.Context, serviceName string) ([]*model.Server, error)
 
 	GetUpdateChan() <-chan *model.Server
+
+	ListAll() []model.Server
 }
 
 var GlobalBaseTransport = &http.Transport{
