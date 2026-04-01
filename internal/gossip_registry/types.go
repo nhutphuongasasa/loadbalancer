@@ -1,6 +1,9 @@
 package gossip_registry
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 const (
 	RoleBackend = "backend"
@@ -29,7 +32,7 @@ func roleFromRaw(raw []byte) string {
 	var probe struct {
 		Role string `json:"role"`
 	}
-	if err := jsonUnmarshal(raw, &probe); err != nil {
+	if err := json.Unmarshal(raw, &probe); err != nil {
 		return ""
 	}
 	return probe.Role
@@ -64,4 +67,10 @@ type BackendSnapshot struct {
 	Port        int    `json:"port"`
 	Weight      int    `json:"weight"`
 	Alive       bool   `json:"alive"`
+}
+
+// ClusterEventHandler là interface để broadcastQueue gọi vào ClusterManager
+type ClusterEventHandler interface {
+	MergeState(msg ClusterStateMsg)
+	OnHealthBroadcast(msg HealthMsg)
 }

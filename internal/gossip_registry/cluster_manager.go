@@ -199,7 +199,9 @@ func (m *ClusterManager) sendStateSnapshot(targetNode string) {
 func (m *ClusterManager) buildSnapshot() []BackendSnapshot {
 	servers := m.reg.ListAll()
 	snapshots := make([]BackendSnapshot, 0, len(servers))
-	for _, srv := range servers {
+	for i := range servers {
+		srv := &servers[i]
+		// Hàm ListAll trả về []mà một số field có mutex nê ta dùng index để lấy reference
 		snapshots = append(snapshots, BackendSnapshot{
 			InstanceID:  srv.InstanceID,
 			ServiceName: srv.ServiceName,

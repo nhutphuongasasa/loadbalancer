@@ -1,6 +1,7 @@
 package gossip_registry
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -99,7 +100,7 @@ func (g *GossipRegistry) Start(opts Options, seeds []string) error {
 		BindPort: opts.BindPort,
 		HTTPAPI:  opts.HTTPAPI,
 	}
-	metaBytes, err := jsonMarshal(lbMeta)
+	metaBytes, err := json.Marshal(lbMeta)
 	if err != nil {
 		return fmt.Errorf("gossip: marshal LBMeta: %w", err)
 	}
