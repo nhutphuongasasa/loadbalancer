@@ -38,6 +38,15 @@ func roleFromRaw(raw []byte) string {
 	return probe.Role
 }
 
+// chua thong tin cua ban than
+type LBNodeInfo struct {
+	Name     string
+	Host     string
+	BindPort int
+	HTTPAPI  int
+	JoinedAt time.Time
+}
+
 // HealthMsg là message broadcast giữa các LB node khi phát hiện health change
 // của một backend instance (từ active health check hoặc gossip event).
 type HealthMsg struct {
@@ -46,6 +55,9 @@ type HealthMsg struct {
 	Alive       bool        `json:"alive"`
 	Timestamp   time.Time   `json:"timestamp"`
 	Action      AgentAction `json:"action"`
+	Host        string      `json:"host"`
+	Port        int         `json:"port"`
+	Weight      int         `json:"weight"`
 	// SourceLB là LB node nào phát hiện ra health change này.
 	// Dùng để tránh vòng lặp broadcast và để debug.
 	SourceLB string `json:"source_lb"`

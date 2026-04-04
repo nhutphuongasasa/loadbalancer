@@ -9,15 +9,6 @@ import (
 	"github.com/nhutphuongasasa/loadbalancer/internal/registry"
 )
 
-// chua thong tin cua ban than
-type LBNodeInfo struct {
-	Name     string
-	Host     string
-	BindPort int
-	HTTPAPI  int
-	JoinedAt time.Time
-}
-
 // quan li cac node lb cluster
 type ClusterManager struct {
 	mu sync.RWMutex
@@ -45,7 +36,6 @@ func NewClusterManager(selfName string, reg registry.RegistryAdapter, log *slog.
 	}
 }
 
-// optional inject
 func (m *ClusterManager) setQueue(q *broadcastQueue) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -113,16 +103,18 @@ func (m *ClusterManager) onLBUpdate(info LBNodeInfo) {
 	m.logger.Info("cluster: LB peer updated", "peer", info.Name)
 }
 
-// xu li logic khi nhan duoc message quan ba join lb cua broadcastQueue
+// xu li logic khi nhan duoc message back end quan ba join lb cua broadcastQueue
 func (m *ClusterManager) OnHealthBroadcast(msg HealthMsg) {
 	action := msg.Action
 	switch action {
 	case ActionJoin:
 		m.reg.Register(&model.Server{
-
 			InstanceID:  msg.InstanceID,
 			ServiceName: msg.ServiceName,
 			Health:      msg.Alive,
+			Host:        msg.Host,
+			Port:        msg.Port,
+			Weight:      msg.Weight,
 		})
 	case ActionLeave:
 		m.reg.Deregister(msg.ServiceName, msg.InstanceID)
@@ -138,14 +130,15 @@ func (m *ClusterManager) OnHealthBroadcast(msg HealthMsg) {
 	)
 }
 
-// MergeState nhận ClusterStateMsg từ LB peer và merge vào registry.
-// Chỉ apply những backend chưa có hoặc có timestamp cũ hơn.
+// xu li logic merge state khi nhan duoc message state snapshot tu broadcastQueue
+// dung de dong bo toan bo state backend list
 func (m *ClusterManager) MergeState(msg ClusterStateMsg) {
 	if msg.FromLB == m.selfName {
-		return // bỏ qua state của chính mình
+		return
 	}
 
-	m.logger.Info("cluster: merging state from peer",
+	m.logger.Info(
+		"cluster: merging state from peer",
 		"from", msg.FromLB,
 		"backends", len(msg.Backends),
 	)
@@ -159,19 +152,19 @@ func (m *ClusterManager) MergeState(msg ClusterStateMsg) {
 			Weight:      b.Weight,
 			Health:      b.Alive,
 		}
-		// Register sẽ upsert — nếu đã tồn tại thì registry quyết định merge policy.
 		if err := m.reg.Register(srv); err != nil {
-			m.logger.Warn("cluster: merge state register failed",
-				"instance", b.InstanceID, "err", err)
+			m.logger.Warn(
+				"cluster: merge state register failed",
+				"instance", b.InstanceID,
+				"err", err,
+			)
+		} else {
+			m.reg.UpdateStatus(b.ServiceName, b.InstanceID, b.Alive)
 		}
-		// Sync trạng thái health
-		m.reg.UpdateStatus(b.ServiceName, b.InstanceID, b.Alive)
 	}
 }
 
-// ─── State Snapshot ───────────────────────────────────────────────────────────
-
-// sendStateSnapshot gửi snapshot toàn bộ backend list cho LB peer vừa join.
+// sendStateSnapshot gửi snapshot toàn bộ backend list cho LB peer vừa join co the that bai
 func (m *ClusterManager) sendStateSnapshot(targetNode string) {
 	m.mu.RLock()
 	q := m.queue
@@ -193,19 +186,19 @@ func (m *ClusterManager) sendStateSnapshot(targetNode string) {
 		Timestamp: time.Now(),
 	}
 	q.BroadcastState(stateMsg)
-	m.logger.Info("cluster: sent state snapshot",
+	m.logger.Info(
+		"cluster: sent state snapshot",
 		"to", targetNode,
 		"backends", len(backends),
 	)
 }
 
-// buildSnapshot lấy danh sách backend hiện tại từ registry và convert sang snapshot.
+// tao state snapshot cua lb hien tai
 func (m *ClusterManager) buildSnapshot() []BackendSnapshot {
 	servers := m.reg.ListAll()
 	snapshots := make([]BackendSnapshot, 0, len(servers))
 	for i := range servers {
 		srv := &servers[i]
-		// Hàm ListAll trả về []mà một số field có mutex nê ta dùng index để lấy reference
 		snapshots = append(snapshots, BackendSnapshot{
 			InstanceID:  srv.InstanceID,
 			ServiceName: srv.ServiceName,

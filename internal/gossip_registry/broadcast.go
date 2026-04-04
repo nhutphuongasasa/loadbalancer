@@ -156,11 +156,13 @@ func (q *broadcastQueue) GetBroadcasts(overhead, limit int) [][]byte {
 	return q.queue.GetBroadcasts(overhead, limit)
 }
 
+// thuc hien gui state
 func (q *broadcastQueue) LocalState(join bool) []byte {
 	// Hiện tại không cần sync full state qua LocalState
 	return nil
 }
 
+// tu dong merge state
 func (q *broadcastQueue) MergeRemoteState(buf []byte, join bool) {
 	// Không dùng vì đang xử lý qua NotifyMsg + BroadcastState
 }

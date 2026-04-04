@@ -20,12 +20,18 @@ func (r *InMemoryRegistry) Register(srv *model.Server) error {
 		r.logger.Warn("Fallback resilient transport created for server", "instance", srv.InstanceID)
 	}
 
-	if !r.checkServer(srv) {
-		return errors.New("max instances per service reached")
-	}
-
 	r.mux.Lock()
 	defer r.mux.Unlock()
+
+	if err := r.checkServer(srv); err != nil {
+		r.logger.Error(
+			"Cannot register server",
+			"service", srv.ServiceName,
+			"id", srv.InstanceID,
+			"err", err,
+		)
+		return err
+	}
 
 	r.setupNewInstance(srv)
 
@@ -38,22 +44,24 @@ func (r *InMemoryRegistry) Register(srv *model.Server) error {
 /*
 *Kiem tra server co ton tia va so luong instance da dat toi da chua
  */
-func (r *InMemoryRegistry) checkServer(srv *model.Server) bool {
+func (r *InMemoryRegistry) checkServer(srv *model.Server) error {
 	if _, ok := r.services[srv.ServiceName]; !ok {
 		r.services[srv.ServiceName] = make(map[string]*model.Server)
 	}
 
-	// Giới hạn số instance per service
+	// Gioi han cua  instance per service
 	if len(r.services[srv.ServiceName]) >= maxInstancesPerService {
-		r.logger.Error("Cannot register new server: max instances reached",
-			"service", srv.ServiceName,
-			"max_allowed", maxInstancesPerService,
-			"current", len(r.services[srv.ServiceName]),
-		)
-		return false
+		return errors.New("max instances per service reached")
 	}
 
-	return true
+	//kiem tra ton tai cua instance Id
+	if existing, exists := r.services[srv.ServiceName][srv.InstanceID]; exists {
+		if existing.Host != srv.Host || existing.Port != srv.Port {
+			return errors.New("instance ID already exists with different host/port")
+		}
+	}
+
+	return nil
 }
 
 /*
