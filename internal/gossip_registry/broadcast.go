@@ -151,18 +151,54 @@ func (q *broadcastQueue) NotifyMsg(b []byte) {
 	}
 }
 
-// GetBroadcasts trả về các message đang chờ broadcast. Được memberlist gọi định kỳ.
+// tra ve cac message broadcast san sang duoc gui di
 func (q *broadcastQueue) GetBroadcasts(overhead, limit int) [][]byte {
 	return q.queue.GetBroadcasts(overhead, limit)
 }
 
-// thuc hien gui state
 func (q *broadcastQueue) LocalState(join bool) []byte {
-	// Hiện tại không cần sync full state qua LocalState
-	return nil
+	backends := q.cluster.BuildSnapshot()
+	if len(backends) == 0 {
+		return nil
+	}
+
+	msg := ClusterStateMsg{
+		Backends:  backends,
+		FromLB:    q.cluster.GetSelfName(),
+		Timestamp: time.Now(),
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		q.logger.Error("gossip: failed to marshal LocalState", "err", err)
+		return nil
+	}
+
+	q.logger.Debug("gossip: LocalState called",
+		"join", join,
+		"backends", len(backends),
+	)
+	return data
 }
 
-// tu dong merge state
 func (q *broadcastQueue) MergeRemoteState(buf []byte, join bool) {
-	// Không dùng vì đang xử lý qua NotifyMsg + BroadcastState
+	if len(buf) == 0 {
+		return
+	}
+
+	var msg ClusterStateMsg
+	if err := json.Unmarshal(buf, &msg); err != nil {
+		q.logger.Warn("gossip: failed to unmarshal MergeRemoteState", "err", err)
+		return
+	}
+
+	q.logger.Debug("gossip: MergeRemoteState called",
+		"join", join,
+		"from", msg.FromLB,
+		"backends", len(msg.Backends),
+	)
+
+	if q.cluster != nil {
+		q.cluster.MergeState(msg)
+	}
 }

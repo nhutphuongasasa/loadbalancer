@@ -11,20 +11,6 @@ import (
 	"github.com/nhutphuongasasa/loadbalancer/internal/registry"
 )
 
-// GossipRegistry là entry point của toàn bộ gossip layer.
-// Nó wire 4 thành phần lại với nhau:
-//
-//	memberlist         → cơ chế truyền gossip (không biết gì về business logic)
-//	broadcastQueue     → encode/decode/route messages (Delegate của memberlist)
-//	EventDelegate      → phân luồng node events theo Role
-//	ClusterManager     → quản lý LB cluster state
-//
-// Luồng dữ liệu:
-//
-//	[backend join]   → memberlist → EventDelegate.NotifyJoin → RegistryAdapter
-//	[lb join]        → memberlist → EventDelegate.NotifyJoin → ClusterDelegate.OnLBJoin → ClusterManager
-//	[health change]  → broadcastQueue.NotifyMsg → RegistryAdapter + ClusterManager
-//	[state sync]     → broadcastQueue.NotifyMsg → ClusterManager.MergeState
 type GossipRegistry struct {
 	cfg     *memberlist.Config
 	list    *memberlist.Memberlist
@@ -37,11 +23,8 @@ type GossipRegistry struct {
 	logger   *slog.Logger
 }
 
-// Options cấu hình cho GossipRegistry (LB node).
 type Options struct {
-	// NodeName là tên duy nhất của LB node này trong cluster.
 	NodeName string
-	// BindPort là port gossip lắng nghe.
 	BindPort int
 	// HTTPAPI là port HTTP API của LB node này (ghi vào LBMeta để peer biết).
 	HTTPAPI int

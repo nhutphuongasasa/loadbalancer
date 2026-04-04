@@ -164,7 +164,11 @@ func (m *ClusterManager) MergeState(msg ClusterStateMsg) {
 	}
 }
 
-// sendStateSnapshot gửi snapshot toàn bộ backend list cho LB peer vừa join co the that bai
+func (m *ClusterManager) GetSelfName() string {
+	return m.selfName
+}
+
+// sendStateSnapshot gui snapshot toan bo backend list cho LB peer vừa join co the that bai
 func (m *ClusterManager) sendStateSnapshot(targetNode string) {
 	m.mu.RLock()
 	q := m.queue
@@ -175,7 +179,7 @@ func (m *ClusterManager) sendStateSnapshot(targetNode string) {
 		return
 	}
 
-	backends := m.buildSnapshot()
+	backends := m.BuildSnapshot()
 	if len(backends) == 0 {
 		return
 	}
@@ -194,7 +198,7 @@ func (m *ClusterManager) sendStateSnapshot(targetNode string) {
 }
 
 // tao state snapshot cua lb hien tai
-func (m *ClusterManager) buildSnapshot() []BackendSnapshot {
+func (m *ClusterManager) BuildSnapshot() []BackendSnapshot {
 	servers := m.reg.ListAll()
 	snapshots := make([]BackendSnapshot, 0, len(servers))
 	for i := range servers {
@@ -211,9 +215,7 @@ func (m *ClusterManager) buildSnapshot() []BackendSnapshot {
 	return snapshots
 }
 
-// ─── Public query API ─────────────────────────────────────────────────────────
-
-// Peers trả về danh sách LB nodes đang active trong cluster (không kể chính mình).
+// tra ve danh sach LB peer dang active trong cluster
 func (m *ClusterManager) Peers() []LBNodeInfo {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -224,14 +226,14 @@ func (m *ClusterManager) Peers() []LBNodeInfo {
 	return out
 }
 
-// PeerCount trả về số LB peer đang active.
+// tra ve so luong LB peer dang active trong cluster
 func (m *ClusterManager) PeerCount() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return len(m.nodes)
 }
 
-// GetPeer trả về thông tin của một LB peer theo tên.
+// tra ve LB peer theo ten, neu khong tim thay tra ve false
 func (m *ClusterManager) GetPeer(name string) (*LBNodeInfo, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

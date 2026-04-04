@@ -86,6 +86,8 @@ type BackendSnapshot struct {
 type ClusterEventHandler interface {
 	MergeState(msg ClusterStateMsg)
 	OnHealthBroadcast(msg HealthMsg)
+	BuildSnapshot() []BackendSnapshot // thêm method này
+	GetSelfName() string              // thêm để LocalState biết tên mình
 }
 
 type AgentAction string
