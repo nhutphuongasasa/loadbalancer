@@ -59,7 +59,7 @@ func NewGossipRegistry(opts Options, reg registry.RegistryAdapter) *GossipRegist
 	clusterMgr := NewClusterManager(opts.NodeName, reg, opts.Logger)
 
 	// 2. Tạo broadcastQueue — route messages vào registry và cluster
-	queue := newBroadcastQueue(reg, clusterMgr, opts.Logger)
+	queue := newBroadcastQueue(clusterMgr, opts.Logger)
 
 	// 3. Inject queue vào cluster manager (tránh circular init)
 	clusterMgr.setQueue(queue)
@@ -161,8 +161,8 @@ func (g *GossipRegistry) Stop() {
 
 // BroadcastHealthChange cho phép LB chủ động broadcast health change
 // (ví dụ từ active HTTP health checker của LB, không phải từ gossip event).
-func (g *GossipRegistry) BroadcastHealthChange(instanceID, svcName string, alive bool) {
-	g.queue.BroadcastHealthChange(instanceID, svcName, alive, g.selfName)
+func (g *GossipRegistry) BroadcastHealthChange(instanceID, svcName string, alive bool, action AgentAction) {
+	g.queue.BroadcastHealthChange(instanceID, svcName, alive, g.selfName, action)
 }
 
 // Cluster trả về ClusterManager để caller query thông tin LB peers.

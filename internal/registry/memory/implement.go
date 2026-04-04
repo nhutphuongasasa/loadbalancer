@@ -95,3 +95,61 @@ func (r *InMemoryRegistry) Deregister(serviceName, instanceID string) error {
 	}
 	return errors.New("server not found")
 }
+
+/*
+* ham thuc hien update lao thong tin instance co trong danh sach
+ */
+func (r *InMemoryRegistry) UpdateStatus(serviceName, instanceID string, alive bool) {
+	r.mux.Lock()
+	defer r.mux.Unlock()
+
+	//Lay doi tuong instance va kiem ra
+	if instances, ok := r.services[serviceName]; ok {
+		if existing, exists := instances[instanceID]; exists {
+			wasHealthy := existing.IsHealthy()
+			existing.SetAlive(alive)
+
+			// day vao channel de update server_pool
+			r.updateChan <- existing
+			r.logger.Debug("Health state changed",
+				"service", serviceName,
+				"id", instanceID,
+				"from", wasHealthy,
+				"to", alive,
+			)
+		}
+	}
+}
+
+/*
+*Tra ve channel de health checker gui thong tin alive cua instance
+ */
+func (r *InMemoryRegistry) GetUpdateChan() <-chan *model.Server {
+	return r.updateChan
+}
+
+/*
+*Duyet danh sach instance cua 1 loai server name de kiem tra xem nhung instance nao con song
+ */
+func (r *InMemoryRegistry) Discover(serviceName string) ([]*model.Server, error) {
+	r.mux.RLock()
+	defer r.mux.RUnlock()
+
+	instances, ok := r.services[serviceName]
+	if !ok || len(instances) == 0 {
+		return nil, errors.New("no servers")
+	}
+
+	var healthy []*model.Server
+	for _, srv := range instances {
+		if srv.IsHealthy() {
+			healthy = append(healthy, srv)
+		}
+	}
+
+	if len(healthy) == 0 {
+		return nil, errors.New("no healthy servers")
+	}
+
+	return healthy, nil
+}

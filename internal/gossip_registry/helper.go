@@ -5,7 +5,6 @@ import (
 	"net"
 
 	"github.com/hashicorp/memberlist"
-	"github.com/nhutphuongasasa/loadbalancer/internal/model"
 )
 
 type msgKind byte
@@ -30,18 +29,6 @@ func decodeFrame(b []byte) (msgKind, []byte, bool) {
 		return 0, nil, false
 	}
 	return msgKind(b[0]), b[1:], true
-}
-
-// buildServer tao model.Server tu memberlist va AgentMeta da parse.
-func buildServer(n *memberlist.Node, meta *AgentMeta) *model.Server {
-	return &model.Server{
-		InstanceID:  meta.InstanceID,
-		ServiceName: meta.ServiceName,
-		Host:        nodeHost(n),
-		Port:        meta.Port,
-		Weight:      meta.Weight,
-		Health:      true,
-	}
 }
 
 // nodeHost lay dia chi IP cua node.

@@ -7,13 +7,11 @@ import (
 	"time"
 
 	"github.com/hashicorp/memberlist"
-	"github.com/nhutphuongasasa/loadbalancer/internal/registry"
 )
 
 // broadcastQueue quản lý broadcast queue và implement memberlist.Delegate
 type broadcastQueue struct {
 	queue   *memberlist.TransmitLimitedQueue
-	reg     registry.RegistryAdapter
 	cluster ClusterEventHandler
 	logger  *slog.Logger
 
@@ -23,12 +21,10 @@ type broadcastQueue struct {
 }
 
 func newBroadcastQueue(
-	reg registry.RegistryAdapter,
 	cluster ClusterEventHandler,
 	logger *slog.Logger,
 ) *broadcastQueue {
 	q := &broadcastQueue{
-		reg:     reg,
 		cluster: cluster,
 		logger:  logger,
 	}
@@ -69,13 +65,14 @@ func (q *broadcastQueue) SetSelfMeta(meta interface{}) {
 	q.mu.Unlock()
 }
 
-// BroadcastHealthChange broadcast thay đổi health của backend
-func (q *broadcastQueue) BroadcastHealthChange(instanceID, svcName string, alive bool, sourceLB string) {
+// day health state cua back end vao  broadcast thay đổi health của backend
+func (q *broadcastQueue) BroadcastHealthChange(instanceID, svcName string, alive bool, sourceLB string, action AgentAction) {
 	msg := HealthMsg{
 		InstanceID:  instanceID,
 		ServiceName: svcName,
 		Alive:       alive,
 		Timestamp:   time.Now().UTC(),
+		Action:      action,
 		SourceLB:    sourceLB,
 	}
 
@@ -86,7 +83,7 @@ func (q *broadcastQueue) BroadcastHealthChange(instanceID, svcName string, alive
 	)
 }
 
-// BroadcastState broadcast toàn bộ state (khi LB mới join)
+// day health cua lb vao broadcast toàn bộ state (khi LB mới join)
 func (q *broadcastQueue) BroadcastState(msg ClusterStateMsg) {
 	q.queue.QueueBroadcast(
 		&rawBroadcast{
@@ -96,7 +93,7 @@ func (q *broadcastQueue) BroadcastState(msg ClusterStateMsg) {
 }
 
 // cung cpa du lieu metadata chinh node nay cho metadata cua struct node trong memberlist
-// chi duoc goi 1 lan khi join cluster
+// chi duoc goi 1 lan khi emberlist.Create() hoac Join(),
 func (q *broadcastQueue) NodeMeta(limit int) []byte {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
@@ -125,8 +122,6 @@ func (q *broadcastQueue) NotifyMsg(b []byte) {
 			q.logger.Warn("gossip: failed to unmarshal health msg", "err", err)
 			return
 		}
-
-		q.reg.UpdateStatus(msg.InstanceID, msg.ServiceName, msg.Alive)
 
 		if q.cluster != nil {
 			q.cluster.OnHealthBroadcast(msg)

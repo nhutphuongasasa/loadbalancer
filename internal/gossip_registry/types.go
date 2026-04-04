@@ -41,10 +41,11 @@ func roleFromRaw(raw []byte) string {
 // HealthMsg là message broadcast giữa các LB node khi phát hiện health change
 // của một backend instance (từ active health check hoặc gossip event).
 type HealthMsg struct {
-	InstanceID  string    `json:"instance_id"`
-	ServiceName string    `json:"service_name"`
-	Alive       bool      `json:"alive"`
-	Timestamp   time.Time `json:"timestamp"`
+	InstanceID  string      `json:"instance_id"`
+	ServiceName string      `json:"service_name"`
+	Alive       bool        `json:"alive"`
+	Timestamp   time.Time   `json:"timestamp"`
+	Action      AgentAction `json:"action"`
 	// SourceLB là LB node nào phát hiện ra health change này.
 	// Dùng để tránh vòng lặp broadcast và để debug.
 	SourceLB string `json:"source_lb"`
@@ -74,3 +75,11 @@ type ClusterEventHandler interface {
 	MergeState(msg ClusterStateMsg)
 	OnHealthBroadcast(msg HealthMsg)
 }
+
+type AgentAction string
+
+const (
+	ActionJoin   AgentAction = "join"
+	ActionLeave  AgentAction = "leave"
+	ActionUpdate AgentAction = "update"
+)

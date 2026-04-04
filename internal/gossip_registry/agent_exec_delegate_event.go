@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/hashicorp/memberlist"
+	"github.com/nhutphuongasasa/loadbalancer/internal/model"
 	"github.com/nhutphuongasasa/loadbalancer/internal/registry"
 )
 
@@ -108,4 +109,16 @@ func parseAgentMeta(raw []byte) (*AgentMeta, bool) {
 		return nil, false
 	}
 	return &m, true
+}
+
+// buildServer tao model.Server tu memberlist va AgentMeta da parse.
+func buildServer(n *memberlist.Node, meta *AgentMeta) *model.Server {
+	return &model.Server{
+		InstanceID:  meta.InstanceID,
+		ServiceName: meta.ServiceName,
+		Host:        nodeHost(n),
+		Port:        meta.Port,
+		Weight:      meta.Weight,
+		Health:      true,
+	}
 }

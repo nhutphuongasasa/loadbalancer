@@ -3,7 +3,6 @@ package gossip_registry
 import (
 	"encoding/json"
 	"log/slog"
-	"net"
 
 	"github.com/hashicorp/memberlist"
 )
@@ -32,7 +31,7 @@ func (d *ClusterDelegate) OnLBJoin(n *memberlist.Node) {
 	}
 	info := LBNodeInfo{
 		Name:     n.Name,
-		Host:     lbNodeHost(n),
+		Host:     nodeHost(n),
 		BindPort: meta.BindPort,
 		HTTPAPI:  meta.HTTPAPI,
 	}
@@ -66,7 +65,7 @@ func (d *ClusterDelegate) OnLBUpdate(n *memberlist.Node) {
 	}
 	info := LBNodeInfo{
 		Name:     n.Name,
-		Host:     lbNodeHost(n),
+		Host:     nodeHost(n),
 		BindPort: meta.BindPort,
 		HTTPAPI:  meta.HTTPAPI,
 	}
@@ -84,15 +83,4 @@ func parseLBMeta(raw []byte) (*LBMeta, bool) {
 		return nil, false
 	}
 	return &m, true
-}
-
-// helper lbNodeHost lay host tu memberlist.Node, thu tu: Addr -> host trong Name -> Name
-func lbNodeHost(n *memberlist.Node) string {
-	if n.Addr != nil {
-		return n.Addr.String()
-	}
-	if host, _, err := net.SplitHostPort(n.Name); err == nil {
-		return host
-	}
-	return n.Name
 }

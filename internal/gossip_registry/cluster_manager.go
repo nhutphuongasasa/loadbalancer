@@ -9,38 +9,30 @@ import (
 	"github.com/nhutphuongasasa/loadbalancer/internal/registry"
 )
 
-// LBNodeInfo chứa thông tin về một LB peer trong cluster.
+// chua thong tin cua ban than
 type LBNodeInfo struct {
-	Name     string    // memberlist node name (unique)
-	Host     string    // địa chỉ IP
-	BindPort int       // gossip bind port
-	HTTPAPI  int       // HTTP API port (tuỳ chọn, để health check LB peer)
-	JoinedAt time.Time // thời điểm join
+	Name     string
+	Host     string
+	BindPort int
+	HTTPAPI  int
+	JoinedAt time.Time
 }
 
-// ClusterManager quản lý trạng thái của LB cluster:
-//  1. Track danh sách LB nodes (join/leave/update)
-//  2. Forward health events nhận từ broadcast sang RegistryAdapter
-//  3. Đồng bộ state (backend list snapshot) khi LB node mới join
-//
-// ClusterManager implement ClusterEventHandler nên broadcastQueue
-// có thể gọi vào mà không cần biết concrete type.
+// quan li cac node lb cluster
 type ClusterManager struct {
 	mu sync.RWMutex
 
-	selfName string                 // tên của LB node này
+	selfName string                 // ten cua lb node nay
 	nodes    map[string]*LBNodeInfo // key = node Name
 	reg      registry.RegistryAdapter
 
-	// queue dùng để gửi state snapshot khi LB mới join.
-	// Được inject sau khi broadcastQueue được tạo (tránh circular init).
+	// queue dung de gui state snapshot den node LB moi join.
 	queue *broadcastQueue
 
 	logger *slog.Logger
 }
 
-// NewClusterManager tạo ClusterManager mới.
-// selfName: tên của LB node này (phải trùng với cfg.Name của memberlist).
+// selfName: ten cua lb node nay trung voi name trong memberlist.config khi duoc khoi tao
 func NewClusterManager(selfName string, reg registry.RegistryAdapter, log *slog.Logger) *ClusterManager {
 	if log == nil {
 		log = slog.Default()
@@ -53,16 +45,15 @@ func NewClusterManager(selfName string, reg registry.RegistryAdapter, log *slog.
 	}
 }
 
-// setQueue inject broadcastQueue sau khi nó được tạo.
-// Gọi bởi GossipRegistry trong quá trình khởi tạo.
+// optional inject
 func (m *ClusterManager) setQueue(q *broadcastQueue) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.queue = q
 }
 
-// ─── LB Node lifecycle ────────────────────────────────────────────────────────
-
+// thuc thi khi co lb moi join vao cluster
+// Gửi state snapshot cho LB peer mới để đồng bộ danh sách backend.
 func (m *ClusterManager) onLBJoin(info LBNodeInfo) {
 	// Bỏ qua chính mình
 	if info.Name == m.selfName {
@@ -75,16 +66,17 @@ func (m *ClusterManager) onLBJoin(info LBNodeInfo) {
 	nodeCount := len(m.nodes)
 	m.mu.Unlock()
 
-	m.logger.Info("cluster: LB peer joined",
+	m.logger.Info(
+		"cluster: LB peer joined",
 		"peer", info.Name,
 		"host", info.Host,
 		"total_lb_nodes", nodeCount,
 	)
 
-	// Gửi state snapshot cho LB peer mới để đồng bộ danh sách backend.
 	m.sendStateSnapshot(info.Name)
 }
 
+// thuc thi khi co lb leave cluster
 func (m *ClusterManager) onLBLeave(nodeName string) {
 	if nodeName == m.selfName {
 		return
@@ -96,20 +88,22 @@ func (m *ClusterManager) onLBLeave(nodeName string) {
 	m.mu.Unlock()
 
 	if existed {
-		m.logger.Info("cluster: LB peer left",
+		m.logger.Info(
+			"cluster: LB peer left",
 			"peer", nodeName,
 			"remaining_lb_nodes", nodeCount,
 		)
 	}
 }
 
+// thuc thi khi co lb update (thay doi meta)
 func (m *ClusterManager) onLBUpdate(info LBNodeInfo) {
 	if info.Name == m.selfName {
 		return
 	}
 	m.mu.Lock()
 	if existing, ok := m.nodes[info.Name]; ok {
-		info.JoinedAt = existing.JoinedAt // giữ nguyên thời điểm join
+		info.JoinedAt = existing.JoinedAt //giu nguyen thoi gian join ban dau
 	} else {
 		info.JoinedAt = time.Now()
 	}
@@ -119,13 +113,23 @@ func (m *ClusterManager) onLBUpdate(info LBNodeInfo) {
 	m.logger.Info("cluster: LB peer updated", "peer", info.Name)
 }
 
-// ─── ClusterEventHandler impl ─────────────────────────────────────────────────
-
-// OnHealthBroadcast nhận HealthMsg từ broadcast (đã được registry update bởi broadcastQueue).
-// ClusterManager dùng để tracking thống kê / audit trail nếu cần.
+// xu li logic khi nhan duoc message quan ba join lb cua broadcastQueue
 func (m *ClusterManager) OnHealthBroadcast(msg HealthMsg) {
-	// Hiện tại chỉ log — registry đã được update trong broadcastQueue.NotifyMsg.
-	// Có thể mở rộng: ghi metrics, alert khi nhiều backend down liên tục, v.v.
+	action := msg.Action
+	switch action {
+	case ActionJoin:
+		m.reg.Register(&model.Server{
+
+			InstanceID:  msg.InstanceID,
+			ServiceName: msg.ServiceName,
+			Health:      msg.Alive,
+		})
+	case ActionLeave:
+		m.reg.Deregister(msg.ServiceName, msg.InstanceID)
+	case ActionUpdate:
+		m.reg.UpdateStatus(msg.ServiceName, msg.InstanceID, msg.Alive)
+	}
+
 	m.logger.Debug("cluster: health event tracked",
 		"instance", msg.InstanceID,
 		"service", msg.ServiceName,
@@ -161,7 +165,7 @@ func (m *ClusterManager) MergeState(msg ClusterStateMsg) {
 				"instance", b.InstanceID, "err", err)
 		}
 		// Sync trạng thái health
-		m.reg.UpdateStatus(b.InstanceID, b.ServiceName, b.Alive)
+		m.reg.UpdateStatus(b.ServiceName, b.InstanceID, b.Alive)
 	}
 }
 
