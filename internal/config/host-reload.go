@@ -148,6 +148,7 @@ func (c *ConfigManager) reloadConfig() error {
 		RateLimit:      resultCfg.ratelimit,
 		CircuitBreaker: resultCfg.circuitBreaker,
 		StickySession:  resultCfg.sticky,
+		ClusterConfig:  resultCfg.cluster,
 		LastReload:     time.Now(),
 	}
 

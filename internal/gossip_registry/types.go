@@ -23,7 +23,7 @@ type AgentMeta struct {
 type LBMeta struct {
 	Role     string `json:"role"` // luôn = RoleLB
 	BindPort int    `json:"bind_port"`
-	HTTPAPI  int    `json:"http_api"`
+	// HTTPAPI  int    `json:"http_api"`
 }
 
 // roleFromRaw đọc trường role từ raw JSON meta mà không unmarshal toàn bộ.
@@ -43,7 +43,7 @@ type LBNodeInfo struct {
 	Name     string
 	Host     string
 	BindPort int
-	HTTPAPI  int
+	// HTTPAPI  int
 	JoinedAt time.Time
 }
 
@@ -67,9 +67,9 @@ type HealthMsg struct {
 // khi một LB node mới join cluster (full-state sync).
 type ClusterStateMsg struct {
 	// Backends là snapshot danh sách backend hiện tại của LB node gửi.
-	Backends  []BackendSnapshot `json:"backends"`
-	FromLB    string            `json:"from_lb"`
-	Timestamp time.Time         `json:"timestamp"`
+	Backends  map[string][]BackendSnapshot `json:"backends"`
+	FromLB    string                       `json:"from_lb"`
+	Timestamp time.Time                    `json:"timestamp"`
 }
 
 // BackendSnapshot là snapshot của một backend instance tại thời điểm sync.
@@ -86,8 +86,8 @@ type BackendSnapshot struct {
 type ClusterEventHandler interface {
 	MergeState(msg ClusterStateMsg)
 	OnHealthBroadcast(msg HealthMsg)
-	BuildSnapshot() []BackendSnapshot // thêm method này
-	GetSelfName() string              // thêm để LocalState biết tên mình
+	BuildSnapshot() map[string][]BackendSnapshot
+	GetSelfName() string
 }
 
 type AgentAction string

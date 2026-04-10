@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -139,7 +140,7 @@ func (r *InMemoryRegistry) GetUpdateChan() <-chan *model.Server {
 /*
 *Duyet danh sach instance cua 1 loai server name de kiem tra xem nhung instance nao con song
  */
-func (r *InMemoryRegistry) Discover(serviceName string) ([]*model.Server, error) {
+func (r *InMemoryRegistry) Discover(_ context.Context, serviceName string) ([]*model.Server, error) {
 	r.mux.RLock()
 	defer r.mux.RUnlock()
 
@@ -160,4 +161,18 @@ func (r *InMemoryRegistry) Discover(serviceName string) ([]*model.Server, error)
 	}
 
 	return healthy, nil
+}
+
+// Tra ve tat ca server dang quan li
+func (r *InMemoryRegistry) ListAll() map[string][]*model.Server {
+	r.mux.RLock()
+	defer r.mux.RUnlock()
+
+	result := make(map[string][]*model.Server)
+	for svcName, instances := range r.services {
+		for _, srv := range instances {
+			result[svcName] = append(result[svcName], srv)
+		}
+	}
+	return result
 }

@@ -33,7 +33,7 @@ func (d *ClusterDelegate) OnLBJoin(n *memberlist.Node) {
 		Name:     n.Name,
 		Host:     nodeHost(n),
 		BindPort: meta.BindPort,
-		HTTPAPI:  meta.HTTPAPI,
+		// HTTPAPI:  meta.HTTPAPI,
 	}
 	d.manager.onLBJoin(info)
 	d.logger.Info(
@@ -67,7 +67,7 @@ func (d *ClusterDelegate) OnLBUpdate(n *memberlist.Node) {
 		Name:     n.Name,
 		Host:     nodeHost(n),
 		BindPort: meta.BindPort,
-		HTTPAPI:  meta.HTTPAPI,
+		// HTTPAPI:  meta.HTTPAPI,
 	}
 	d.manager.onLBUpdate(info)
 	d.logger.Info("gossip: LB node updated", "node", n.Name)

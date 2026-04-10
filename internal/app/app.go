@@ -11,6 +11,7 @@ import (
 
 	"github.com/nhutphuongasasa/loadbalancer/internal/cache"
 	"github.com/nhutphuongasasa/loadbalancer/internal/config"
+	"github.com/nhutphuongasasa/loadbalancer/internal/gossip_registry"
 	"github.com/nhutphuongasasa/loadbalancer/internal/middleware"
 	"github.com/nhutphuongasasa/loadbalancer/internal/registry/memory"
 	"github.com/nhutphuongasasa/loadbalancer/internal/registry/provider"
@@ -43,6 +44,7 @@ func NewApp(rootDir string) (*App, error) {
 	logger := utils.GetLogger(cfgManager.GetSnapshot().Config.LogConfig)
 
 	retryCfg := cfgManager.GetRetryConfig()
+
 	cbCfg := cfgManager.GetCircuitBreakerConfig()
 
 	providerServer := provider.NewProviderServer(retryCfg, cbCfg, logger)
@@ -50,6 +52,21 @@ func NewApp(rootDir string) (*App, error) {
 	cache, err := cache.NewCacheClient(cfg.RedisConfig)
 
 	reg := memory.NewInMemoryRegistry(logger, 10*time.Second, providerServer.GetProviderChannel())
+
+	var gossip *gossip_registry.GossipRegistry
+
+	if cfgManager.GetClusterConfig() != nil {
+		logger.Warn("No cluster config found")
+		gossip = gossip_registry.NewGossipRegistry(
+			gossip_registry.Options{
+				NodeName:      cfgManager.GetClusterConfig().NodeName,
+				BindPort:      cfgManager.GetClusterConfig().BindPort,
+				AdvertisePort: cfgManager.GetClusterConfig().AdvertisePort,
+				Logger:        logger,
+			},
+			reg,
+		)
+	}
 
 	strategy, err := initStrategy(cfg.Strategy.Strategy, logger)
 	if err != nil {

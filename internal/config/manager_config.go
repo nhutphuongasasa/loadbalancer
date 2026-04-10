@@ -27,6 +27,7 @@ type ConfigSnapshot struct {
 	RateLimit      *RateLimitConfig
 	StickySession  *StickySessionConfig
 	CircuitBreaker *CircuitBreakerConfig
+	ClusterConfig  *ClusterConfig
 	LastReload     time.Time
 }
 
@@ -83,6 +84,13 @@ func (m *ConfigManager) Stop() {
 		}
 		m.logger.Info("Complete stop watcher config manger")
 	})
+}
+
+func (m *ConfigManager) GetClusterConfig() *ClusterConfig {
+	if s := m.snapshot.Load(); s != nil {
+		return s.ClusterConfig
+	}
+	return nil
 }
 
 func (m *ConfigManager) StoreSnapshot(s *ConfigSnapshot) {

@@ -57,3 +57,10 @@ circuit_breaker:
   max_consecutive_failures: 3
   timeout_seconds: 5
   interval_seconds: 10
+
+cluster:
+  node_name: "node1"
+  bind_port: 8082
+  advertise_port: 8082
+  seed: 
+  - 127.0.0.1:8082

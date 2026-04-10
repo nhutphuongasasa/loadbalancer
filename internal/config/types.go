@@ -126,12 +126,20 @@ func DefaultCircuitBreakerConfig() *CircuitBreakerConfig {
 	}
 }
 
+type ClusterConfig struct {
+	Seed          string `mapstructure:"seed"`
+	NodeName      string `mapstructure:"node_name"`
+	BindPort      int    `mapstructure:"bind_port"`
+	AdvertisePort int    `mapstructure:"advertise_port"`
+}
+
 type resultConfig struct {
 	config         *Config
 	router         *RoutingConfig
 	retry          *RetryConfig
 	ratelimit      *RateLimitConfig
 	circuitBreaker *CircuitBreakerConfig
+	cluster        *ClusterConfig
 	sticky         *StickySessionConfig
 }
 
@@ -142,6 +150,7 @@ func unMarshalConfig(v *viper.Viper) (*resultConfig, error) {
 	var rateLimit *RateLimitConfig
 	var circuitBreaker *CircuitBreakerConfig
 	var sticky *StickySessionConfig
+	var clusterConfig *ClusterConfig
 
 	if err := v.Unmarshal(&cfg); err != nil {
 		slog.Error("Failed to unmarshall config")
@@ -221,6 +230,15 @@ func unMarshalConfig(v *viper.Viper) (*resultConfig, error) {
 	} else if rateLimit.CleanupTTL < time.Minute {
 		rateLimit.CleanupTTL = rateLimit.CleanupTTL * time.Minute
 	}
+
+	clusterSub := v.Sub("cluster")
+	if clusterSub != nil {
+		if err := clusterSub.Unmarshal(&clusterConfig); err != nil {
+			slog.Warn("Failed to unmarshall cluster")
+			return nil, err
+		}
+	}
+
 	result := &resultConfig{
 		config:         cfg,
 		router:         routing,
@@ -228,6 +246,8 @@ func unMarshalConfig(v *viper.Viper) (*resultConfig, error) {
 		ratelimit:      rateLimit,
 		circuitBreaker: circuitBreaker,
 		sticky:         sticky,
+		cluster:        clusterConfig,
 	}
+
 	return result, nil
 }

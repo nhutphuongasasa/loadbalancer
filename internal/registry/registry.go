@@ -19,7 +19,7 @@ type RegistryAdapter interface {
 
 	GetUpdateChan() <-chan *model.Server
 
-	ListAll() []model.Server
+	ListAll() map[string][]*model.Server
 }
 
 var GlobalBaseTransport = &http.Transport{

@@ -119,7 +119,10 @@ func (q *broadcastQueue) NotifyMsg(b []byte) {
 	case kindHealth:
 		var msg HealthMsg
 		if err := json.Unmarshal(payload, &msg); err != nil {
-			q.logger.Warn("gossip: failed to unmarshal health msg", "err", err)
+			q.logger.Warn(
+				"gossip: failed to unmarshal health msg",
+				"err", err,
+			)
 			return
 		}
 
@@ -127,7 +130,8 @@ func (q *broadcastQueue) NotifyMsg(b []byte) {
 			q.cluster.OnHealthBroadcast(msg)
 		}
 
-		q.logger.Debug("gossip: health received",
+		q.logger.Debug(
+			"gossip: health received",
 			"instance", msg.InstanceID,
 			"alive", msg.Alive,
 			"from", msg.SourceLB,
@@ -136,7 +140,10 @@ func (q *broadcastQueue) NotifyMsg(b []byte) {
 	case kindState:
 		var msg ClusterStateMsg
 		if err := json.Unmarshal(payload, &msg); err != nil {
-			q.logger.Warn("gossip: failed to unmarshal state msg", "err", err)
+			q.logger.Warn(
+				"gossip: failed to unmarshal state msg",
+				"err", err,
+			)
 			return
 		}
 

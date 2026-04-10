@@ -143,25 +143,25 @@ func (m *ClusterManager) MergeState(msg ClusterStateMsg) {
 		"backends", len(msg.Backends),
 	)
 
-	for _, b := range msg.Backends {
-		srv := &model.Server{
-			InstanceID:  b.InstanceID,
-			ServiceName: b.ServiceName,
-			Host:        b.Host,
-			Port:        b.Port,
-			Weight:      b.Weight,
-			Health:      b.Alive,
-		}
-		if err := m.reg.Register(srv); err != nil {
-			m.logger.Warn(
-				"cluster: merge state register failed",
-				"instance", b.InstanceID,
-				"err", err,
-			)
-		} else {
-			m.reg.UpdateStatus(b.ServiceName, b.InstanceID, b.Alive)
-		}
-	}
+	// for _, b := range msg.Backends {
+	// 	srv := &model.Server{
+	// 		InstanceID:  b.InstanceID,
+	// 		ServiceName: b.ServiceName,
+	// 		Host:        b.Host,
+	// 		Port:        b.Port,
+	// 		Weight:      b.Weight,
+	// 		Health:      b.Alive,
+	// 	}
+	// 	if err := m.reg.Register(srv); err != nil {
+	// 		m.logger.Warn(
+	// 			"cluster: merge state register failed",
+	// 			"instance", b.InstanceID,
+	// 			"err", err,
+	// 		)
+	// 	} else {
+	// 		m.reg.UpdateStatus(b.ServiceName, b.InstanceID, b.Alive)
+	// 	}
+	// }
 }
 
 func (m *ClusterManager) GetSelfName() string {
@@ -198,19 +198,21 @@ func (m *ClusterManager) sendStateSnapshot(targetNode string) {
 }
 
 // tao state snapshot cua lb hien tai
-func (m *ClusterManager) BuildSnapshot() []BackendSnapshot {
+func (m *ClusterManager) BuildSnapshot() map[string][]BackendSnapshot {
 	servers := m.reg.ListAll()
-	snapshots := make([]BackendSnapshot, 0, len(servers))
-	for i := range servers {
-		srv := &servers[i]
-		snapshots = append(snapshots, BackendSnapshot{
-			InstanceID:  srv.InstanceID,
-			ServiceName: srv.ServiceName,
-			Host:        srv.Host,
-			Port:        srv.Port,
-			Weight:      srv.Weight,
-			Alive:       srv.Health,
-		})
+	snapshots := make(map[string][]BackendSnapshot)
+
+	for svcName, srvList := range servers {
+		for _, srv := range srvList {
+			snapshots[svcName] = append(snapshots[svcName], BackendSnapshot{
+				InstanceID:  srv.InstanceID,
+				ServiceName: srv.ServiceName,
+				Host:        srv.Host,
+				Port:        srv.Port,
+				Weight:      srv.Weight,
+				Alive:       srv.Health,
+			})
+		}
 	}
 	return snapshots
 }
