@@ -62,8 +62,6 @@ func (m *ClusterManager) onLBJoin(info LBNodeInfo) {
 		"host", info.Host,
 		"total_lb_nodes", nodeCount,
 	)
-
-	m.sendStateSnapshot(info.Name)
 }
 
 // thuc thi khi co lb leave cluster
@@ -169,33 +167,33 @@ func (m *ClusterManager) GetSelfName() string {
 }
 
 // sendStateSnapshot gui snapshot toan bo backend list cho LB peer vừa join co the that bai
-func (m *ClusterManager) sendStateSnapshot(targetNode string) {
-	m.mu.RLock()
-	q := m.queue
-	m.mu.RUnlock()
+// func (m *ClusterManager) sendStateSnapshot(targetNode string) {
+// 	m.mu.RLock()
+// 	q := m.queue
+// 	m.mu.RUnlock()
 
-	if q == nil {
-		m.logger.Warn("cluster: cannot send state snapshot, queue not ready")
-		return
-	}
+// 	if q == nil {
+// 		m.logger.Warn("cluster: cannot send state snapshot, queue not ready")
+// 		return
+// 	}
 
-	backends := m.BuildSnapshot()
-	if len(backends) == 0 {
-		return
-	}
+// 	backends := m.BuildSnapshot()
+// 	if len(backends) == 0 {
+// 		return
+// 	}
 
-	stateMsg := ClusterStateMsg{
-		Backends:  backends,
-		FromLB:    m.selfName,
-		Timestamp: time.Now(),
-	}
-	q.BroadcastState(stateMsg)
-	m.logger.Info(
-		"cluster: sent state snapshot",
-		"to", targetNode,
-		"backends", len(backends),
-	)
-}
+// 	stateMsg := ClusterStateMsg{
+// 		Backends:  backends,
+// 		FromLB:    m.selfName,
+// 		Timestamp: time.Now(),
+// 	}
+// 	q.BroadcastLBState(stateMsg)
+// 	m.logger.Info(
+// 		"cluster: sent state snapshot",
+// 		"to", targetNode,
+// 		"backends", len(backends),
+// 	)
+// }
 
 // tao state snapshot cua lb hien tai
 func (m *ClusterManager) BuildSnapshot() map[string][]BackendSnapshot {

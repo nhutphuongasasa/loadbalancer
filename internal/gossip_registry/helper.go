@@ -9,11 +9,6 @@ import (
 
 type msgKind byte
 
-const (
-	kindHealth msgKind = 0x01
-	kindState  msgKind = 0x02
-)
-
 // encodeFrame encapsulates message voi 1 byte header de phan biet loai message.
 func encodeFrame(kind msgKind, v any) []byte {
 	b, _ := json.Marshal(v)

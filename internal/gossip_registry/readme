@@ -1,0 +1,21 @@
+flow cua gossip 
+
+- mac dinh gossip se tu dong bo danh sach member cua no quan li  chi can co 1 node join vao list se duoc tu dong lan truyen theo co che luy thua
+
+flow kkhi join, leave, update
+
+- khi list.join thi gossip se cap den seed node de join luc no ta se implent onjoin o seed node  khi no  gossip de cung cap nhat danhscch cua no quna li o ben duoi 
+- sau khi cap nhat danh scah cho ban than gossip quan li thi no se bat dau lan treuyn theo co che luy thua den cac node khac de don gbo danhs cha quan li tren cac insatnce khac
+- sau do no bat dau pushpul bang 2 ham neu ta implemnt d la local state va merge remotestate
+- no se khong day vao transitqueue
+
+-flow ke den khi ta  muon broad cast 1 thong tin logic nao do
+- ta se custom 1 metatdat struct day vao transitqueue 
+- khi do gossip chon k node de lan truyen luy thua 
+- node gui thong tin msg vao transitquque se khnog tu don gdung notify delegate de xu li
+- ma no se duoc day ssang k node duoc chon de lan truyen luy thua 
+- sau do cac node nhan se duoc notify delegate de xu li
+
+flow push pull
+- mac dinh cu khoang n interval time se duoc thuc hien pushpull dong bo du lieu k node duoc chon theo ket noi tcp
+- luc do ham localstate va ham merge remotestate se duoc goi de dong bodu lieu giua cac ben

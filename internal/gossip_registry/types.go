@@ -10,6 +10,12 @@ const (
 	RoleLB      = "lb"
 )
 
+const (
+	kindHealthAndWeight msgKind = 0x01
+	// kindState           msgKind = 0x02
+	kindSecurity msgKind = 0x03
+)
+
 // AgentMeta là metadata của backend agent node.
 type AgentMeta struct {
 	Role        string `json:"role"` // luôn = RoleBackend

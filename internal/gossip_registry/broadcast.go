@@ -66,31 +66,24 @@ func (q *broadcastQueue) SetSelfMeta(meta interface{}) {
 }
 
 // day health state cua back end vao  broadcast thay đổi health của backend
-func (q *broadcastQueue) BroadcastHealthChange(instanceID, svcName string, alive bool, sourceLB string, action AgentAction) {
-	msg := HealthMsg{
-		InstanceID:  instanceID,
-		ServiceName: svcName,
-		Alive:       alive,
-		Timestamp:   time.Now().UTC(),
-		Action:      action,
-		SourceLB:    sourceLB,
-	}
+// func (q *broadcastQueue) BroadcastBackendHealthChange(instanceID, svcName string, alive bool, sourceLB string, action AgentAction) {
+// 	msg := HealthMsg{
+// 		InstanceID:  instanceID,
+// 		ServiceName: svcName,
+// 		Alive:       alive,
+// 		Timestamp:   time.Now().UTC(),
+// 		Action:      action,
+// 		SourceLB:    sourceLB,
+// 	}
 
-	q.queue.QueueBroadcast(
-		&healthBroadcast{
-			msg: encodeFrame(kindHealth, msg),
-		},
-	)
-}
+// 	q.queue.QueueBroadcast(
+// 		&healthBroadcast{
+// 			msg: encodeFrame(kindHealth, msg),
+// 		},
+// 	)
+// }
 
 // day health cua lb vao broadcast toàn bộ state (khi LB mới join)
-func (q *broadcastQueue) BroadcastState(msg ClusterStateMsg) {
-	q.queue.QueueBroadcast(
-		&rawBroadcast{
-			msg: encodeFrame(kindState, msg),
-		},
-	)
-}
 
 // cung cpa du lieu metadata chinh node nay cho metadata cua struct node trong memberlist
 // chi duoc goi 1 lan khi emberlist.Create() hoac Join(),
@@ -116,7 +109,7 @@ func (q *broadcastQueue) NotifyMsg(b []byte) {
 	}
 
 	switch kind {
-	case kindHealth:
+	case kindHealthAndWeight:
 		var msg HealthMsg
 		if err := json.Unmarshal(payload, &msg); err != nil {
 			q.logger.Warn(
@@ -137,24 +130,11 @@ func (q *broadcastQueue) NotifyMsg(b []byte) {
 			"from", msg.SourceLB,
 		)
 
-	case kindState:
-		var msg ClusterStateMsg
-		if err := json.Unmarshal(payload, &msg); err != nil {
-			q.logger.Warn(
-				"gossip: failed to unmarshal state msg",
-				"err", err,
-			)
-			return
-		}
+	case kindSecurity:
+		// handle security msg (nếu có)
 
-		if q.cluster != nil {
-			q.cluster.MergeState(msg)
-		}
-
-		q.logger.Debug("gossip: state sync received",
-			"from", msg.FromLB,
-			"backends", len(msg.Backends),
-		)
+	default:
+		q.logger.Warn("gossip: unknown msg kind", "kind", kind)
 	}
 }
 

@@ -122,9 +122,9 @@ func (g *GossipRegistry) Stop() {
 	g.logger.Info("gossip: stopped", "node", g.selfName)
 }
 
-func (g *GossipRegistry) BroadcastHealthChange(instanceID, svcName string, alive bool, action AgentAction) {
-	g.queue.BroadcastHealthChange(instanceID, svcName, alive, g.selfName, action)
-}
+// func (g *GossipRegistry) BroadcastHealthChange(instanceID, svcName string, alive bool, action AgentAction) {
+// 	g.queue.BroadcastBackendHealthChange(instanceID, svcName, alive, g.selfName, action)
+// }
 
 func (g *GossipRegistry) Cluster() *ClusterManager {
 	return g.cluster
