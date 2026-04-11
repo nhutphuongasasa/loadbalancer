@@ -3,10 +3,12 @@ package gossip_registry
 import (
 	"encoding/json"
 	"log/slog"
+	"net"
 	"sync"
 	"time"
 
 	"github.com/hashicorp/memberlist"
+	"github.com/nhutphuongasasa/loadbalancer/internal/registry"
 )
 
 // broadcastQueue quản lý broadcast queue và implement memberlist.Delegate
@@ -97,6 +99,46 @@ func (q *broadcastQueue) NodeMeta(limit int) []byte {
 	return q.selfMeta
 }
 
+// giu ket noi tcp de cac node khac phuc vu dong bo data custom
+func (q *broadcastQueue) HandleStream(conn net.Conn) {
+	defer conn.Close()
+
+	conn.SetDeadline(time.Now().Add(10 * time.Second))
+
+	var kind [1]byte
+	if _, err := conn.Read(kind[:]); err != nil {
+		return // Kết nối rác hoặc lỗi mạng
+	}
+
+	switch msgKind(kind[0]) {
+	case kindClusterState: // Hoặc một kind cụ thể bạn dùng cho Sync TCP
+		var req SyncDataMsg
+		decoder := json.NewDecoder(conn)
+		if err := decoder.Decode(&req); err != nil {
+			q.logger.Warn("gossip: failed to decode sync request over stream", "err", err)
+			return
+		}
+
+		q.logger.Debug("gossip: stream sync request received", "from", req.NodeName, "version", req.VersionData)
+
+		if req.VersionData < registry.VersionDataBackend {
+			resp := SyncDataMsg{
+				NodeName:    q.cluster.GetSelfName(),
+				VersionData: registry.VersionDataBackend,
+				Data:        q.cluster.BuildSnapshot(),
+			}
+
+			encoder := json.NewEncoder(conn)
+			if err := encoder.Encode(resp); err != nil {
+				q.logger.Error("gossip: failed to send sync response over stream", "err", err)
+			}
+		}
+
+	default:
+		q.logger.Warn("gossip: unknown stream kind received", "kind", kind[0])
+	}
+}
+
 // ham xu li message duoc lan truyen tu cac node lb khac trong cluster
 func (q *broadcastQueue) NotifyMsg(b []byte) {
 	if len(b) == 0 {
@@ -130,6 +172,32 @@ func (q *broadcastQueue) NotifyMsg(b []byte) {
 			"from", msg.SourceLB,
 		)
 
+	case kindCheckVersion:
+		var msg SyncDataMsg
+		if err := json.Unmarshal(payload, &msg); err != nil {
+			q.logger.Warn(
+				"gossip: failed to unmarshal check version msg",
+				"err", err,
+			)
+			return
+		}
+
+		q.logger.Debug(
+			"gossip: check version received",
+			"from", msg.NodeName,
+			"version", msg.VersionData,
+		)
+
+		if q.cluster != nil {
+			if msg.VersionData == registry.VersionDataBackend {
+
+			} else {
+				if msg.VersionData < registry.VersionDataBackend {
+
+				} else {
+				}
+			}
+		}
 	case kindSecurity:
 		// handle security msg (nếu có)
 

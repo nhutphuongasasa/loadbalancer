@@ -51,6 +51,7 @@ func NewGossipRegistry(opts Options, reg registry.RegistryAdapter) *GossipRegist
 	cfg.AdvertisePort = opts.BindPort //la port de cac lb khac biet duong dne node lb nay
 	cfg.LogOutput = io.Discard
 	cfg.Events = eventDelegate
+	cfg.PushPullInterval = 0 //disable push/pull tu custom sync data
 
 	return &GossipRegistry{
 		cfg:      cfg,
@@ -66,9 +67,10 @@ func (g *GossipRegistry) Start(opts Options, seeds []string) error {
 	defer g.mu.Unlock()
 
 	lbMeta := LBMeta{
-		Role:     RoleLB,
-		BindPort: opts.BindPort,
-		// HTTPAPI:  opts.HTTPAPI,
+		Role:          RoleLB,
+		NodeName:      opts.NodeName,
+		AdvertisePort: opts.AdvertisePort,
+		BindPort:      opts.BindPort,
 	}
 	metaBytes, err := json.Marshal(lbMeta)
 	if err != nil {
@@ -115,22 +117,18 @@ func (g *GossipRegistry) Stop() {
 		return
 	}
 	if g.isJoined {
-		_ = g.list.Leave(3e9) // 3 giây timeout
+		_ = g.list.Leave(3e9)
 	}
 	_ = g.list.Shutdown()
 	g.isJoined = false
 	g.logger.Info("gossip: stopped", "node", g.selfName)
 }
 
-// func (g *GossipRegistry) BroadcastHealthChange(instanceID, svcName string, alive bool, action AgentAction) {
-// 	g.queue.BroadcastBackendHealthChange(instanceID, svcName, alive, g.selfName, action)
-// }
-
-func (g *GossipRegistry) Cluster() *ClusterManager {
+func (g *GossipRegistry) GetCluster() *ClusterManager {
 	return g.cluster
 }
 
-func (g *GossipRegistry) Members() int {
+func (g *GossipRegistry) GetNumberOfMembers() int {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.list == nil {

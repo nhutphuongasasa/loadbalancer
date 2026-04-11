@@ -5,6 +5,7 @@ import (
 
 	"github.com/nhutphuongasasa/loadbalancer/internal/health"
 	"github.com/nhutphuongasasa/loadbalancer/internal/model"
+	"github.com/nhutphuongasasa/loadbalancer/internal/registry"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -49,7 +50,7 @@ func (r *InMemoryRegistry) workerLoop(serviceName string, worker *health.HeathCh
 	ticker := time.NewTicker(r.checkInterval)
 	defer ticker.Stop()
 
-	sem := semaphore.NewWeighted(int64(maxConcurrentCheck))
+	sem := semaphore.NewWeighted(int64(registry.MaxConcurrentCheck))
 
 	for {
 		select {
@@ -100,7 +101,7 @@ func (r *InMemoryRegistry) extractBatch(serviceName string) []*model.Server {
 		start = 0
 	}
 
-	end := start + maxBatchSize
+	end := start + registry.MaxBatchSize
 	if end > len(allServers) {
 		end = len(allServers)
 	}

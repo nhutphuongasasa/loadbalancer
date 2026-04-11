@@ -7,8 +7,6 @@ import (
 	"github.com/hashicorp/memberlist"
 )
 
-type msgKind byte
-
 // encodeFrame encapsulates message voi 1 byte header de phan biet loai message.
 func encodeFrame(kind msgKind, v any) []byte {
 	b, _ := json.Marshal(v)

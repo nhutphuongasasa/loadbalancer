@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/nhutphuongasasa/loadbalancer/internal/model"
+	"github.com/nhutphuongasasa/loadbalancer/internal/registry"
 )
 
 //can dam bao lam sao 1 server thuc te chi co 1 instance thoi
@@ -38,6 +39,7 @@ func (r *InMemoryRegistry) Register(srv *model.Server) error {
 
 	r.ensureWorkerForService(srv.ServiceName)
 
+	r.updateGlobalInstanceVersionData(registry.VersionDataBackend + 1)
 	r.logger.Info("Server registered", "service", srv.ServiceName, "id", srv.InstanceID)
 	return nil
 }
@@ -51,7 +53,7 @@ func (r *InMemoryRegistry) checkServer(srv *model.Server) error {
 	}
 
 	// Gioi han cua  instance per service
-	if len(r.services[srv.ServiceName]) >= maxInstancesPerService {
+	if len(r.services[srv.ServiceName]) >= registry.MaxInstancesPerService {
 		return errors.New("max instances per service reached")
 	}
 
@@ -98,6 +100,7 @@ func (r *InMemoryRegistry) Deregister(serviceName, instanceID string) error {
 				r.removeWorkerLocked(serviceName)
 			}
 
+			r.updateGlobalInstanceVersionData(registry.VersionDataBackend + 1)
 			r.logger.Info("Server deregistered", "service", serviceName, "id", instanceID)
 			return nil
 		}
@@ -120,6 +123,7 @@ func (r *InMemoryRegistry) UpdateStatus(serviceName, instanceID string, alive bo
 
 			// day vao channel de update server_pool
 			r.updateChan <- existing
+			r.updateGlobalInstanceVersionData(registry.VersionDataBackend + 1)
 			r.logger.Debug("Health state changed",
 				"service", serviceName,
 				"id", instanceID,
@@ -175,4 +179,8 @@ func (r *InMemoryRegistry) ListAll() map[string][]*model.Server {
 		}
 	}
 	return result
+}
+
+func (r *InMemoryRegistry) updateGlobalInstanceVersionData(version registry.VersionData) {
+	registry.VersionDataBackend = registry.VersionData(version)
 }
