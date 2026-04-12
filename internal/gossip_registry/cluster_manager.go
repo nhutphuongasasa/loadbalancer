@@ -128,72 +128,20 @@ func (m *ClusterManager) OnHealthBroadcast(msg HealthMsg) {
 	)
 }
 
+// nhan msg data tao 1 mapmoi torng go routine sau do  khico duoc lock ngay lap tuc automic de  trao doi du lieu
+func (m *ClusterManager) MergeRemoteState(msg SyncDataMsg) error {
+	return nil
+}
+
 // xu li logic merge state khi nhan duoc message state snapshot tu broadcastQueue
 // dung de dong bo toan bo state backend list
 func (m *ClusterManager) MergeState(msg ClusterStateMsg) {
-	if msg.FromLB == m.selfName {
-		return
-	}
 
-	m.logger.Info(
-		"cluster: merging state from peer",
-		"from", msg.FromLB,
-		"backends", len(msg.Backends),
-	)
-
-	// for _, b := range msg.Backends {
-	// 	srv := &model.Server{
-	// 		InstanceID:  b.InstanceID,
-	// 		ServiceName: b.ServiceName,
-	// 		Host:        b.Host,
-	// 		Port:        b.Port,
-	// 		Weight:      b.Weight,
-	// 		Health:      b.Alive,
-	// 	}
-	// 	if err := m.reg.Register(srv); err != nil {
-	// 		m.logger.Warn(
-	// 			"cluster: merge state register failed",
-	// 			"instance", b.InstanceID,
-	// 			"err", err,
-	// 		)
-	// 	} else {
-	// 		m.reg.UpdateStatus(b.ServiceName, b.InstanceID, b.Alive)
-	// 	}
-	// }
 }
 
 func (m *ClusterManager) GetSelfName() string {
 	return m.selfName
 }
-
-// sendStateSnapshot gui snapshot toan bo backend list cho LB peer vừa join co the that bai
-// func (m *ClusterManager) sendStateSnapshot(targetNode string) {
-// 	m.mu.RLock()
-// 	q := m.queue
-// 	m.mu.RUnlock()
-
-// 	if q == nil {
-// 		m.logger.Warn("cluster: cannot send state snapshot, queue not ready")
-// 		return
-// 	}
-
-// 	backends := m.BuildSnapshot()
-// 	if len(backends) == 0 {
-// 		return
-// 	}
-
-// 	stateMsg := ClusterStateMsg{
-// 		Backends:  backends,
-// 		FromLB:    m.selfName,
-// 		Timestamp: time.Now(),
-// 	}
-// 	q.BroadcastLBState(stateMsg)
-// 	m.logger.Info(
-// 		"cluster: sent state snapshot",
-// 		"to", targetNode,
-// 		"backends", len(backends),
-// 	)
-// }
 
 // tao state snapshot cua lb hien tai
 func (m *ClusterManager) BuildSnapshot() map[string][]BackendSnapshot {

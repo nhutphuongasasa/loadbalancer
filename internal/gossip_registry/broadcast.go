@@ -67,26 +67,6 @@ func (q *broadcastQueue) SetSelfMeta(meta interface{}) {
 	q.mu.Unlock()
 }
 
-// day health state cua back end vao  broadcast thay đổi health của backend
-// func (q *broadcastQueue) BroadcastBackendHealthChange(instanceID, svcName string, alive bool, sourceLB string, action AgentAction) {
-// 	msg := HealthMsg{
-// 		InstanceID:  instanceID,
-// 		ServiceName: svcName,
-// 		Alive:       alive,
-// 		Timestamp:   time.Now().UTC(),
-// 		Action:      action,
-// 		SourceLB:    sourceLB,
-// 	}
-
-// 	q.queue.QueueBroadcast(
-// 		&healthBroadcast{
-// 			msg: encodeFrame(kindHealth, msg),
-// 		},
-// 	)
-// }
-
-// day health cua lb vao broadcast toàn bộ state (khi LB mới join)
-
 // cung cpa du lieu metadata chinh node nay cho metadata cua struct node trong memberlist
 // chi duoc goi 1 lan khi emberlist.Create() hoac Join(),
 func (q *broadcastQueue) NodeMeta(limit int) []byte {
@@ -102,40 +82,102 @@ func (q *broadcastQueue) NodeMeta(limit int) []byte {
 // giu ket noi tcp de cac node khac phuc vu dong bo data custom
 func (q *broadcastQueue) HandleStream(conn net.Conn) {
 	defer conn.Close()
-
 	conn.SetDeadline(time.Now().Add(10 * time.Second))
 
-	var kind [1]byte
-	if _, err := conn.Read(kind[:]); err != nil {
-		return // Kết nối rác hoặc lỗi mạng
+	//doc byte dau tien de biet yeu cau
+	kind, req, err := readPacketSyncDataMsg(conn)
+	if err != nil {
+		q.logger.Warn(
+			"gossip: failed to read packet sync data msg",
+			"err", err,
+		)
+		return
 	}
 
-	switch msgKind(kind[0]) {
-	case kindClusterState: // Hoặc một kind cụ thể bạn dùng cho Sync TCP
-		var req SyncDataMsg
-		decoder := json.NewDecoder(conn)
-		if err := decoder.Decode(&req); err != nil {
-			q.logger.Warn("gossip: failed to decode sync request over stream", "err", err)
+	switch kind {
+	case kindCheckVersion:
+		localVersion := registry.VersionDataBackend
+
+		if req.VersionData == localVersion {
+			//version ban nhau khong can gui du lieu
+			q.logger.Info(
+				"gossip: version data is equal in stream sync",
+				"from", req.NodeName,
+				"version", req.VersionData,
+			)
+
+			writeSeedBytes(kindOk, conn, q)
+			return
+		} else if req.VersionData > localVersion {
+			//local version  dang cu cna duoc cap nhat tu node gui reqquest
+			writeSeedBytes(kindOutdatedData, conn, q)
+
+			//nhan data snapshot du lieu tu peer
+			kind, SyncDataMsg, err := readPacketSyncDataMsg(conn)
+			if err != nil {
+				q.logger.Warn(
+					"gossip: failed to read packet sync data msg",
+					"err", err,
+				)
+				return
+			}
+			if kind != kindRequestFullData {
+				q.logger.Warn(
+					"gossip: unexpected kind received in stream sync",
+					"kind", kind,
+				)
+				return
+			}
+
+			//tien hanh cap nhat data cua local lb
+			q.logger.Debug(
+				"Starting sync data local lb ",
+				"from peer", SyncDataMsg.NodeName,
+				"version merge remote", SyncDataMsg.VersionData,
+				"data", SyncDataMsg.Data,
+			)
+
+			ok := q.cluster.MergeRemoteState(SyncDataMsg)
+
+			//gui response OK sau khi cap nhat xong
+			if ok != nil {
+				writeSeedBytes(kindFailed, conn, q)
+				q.logger.Warn(
+					"gossip: failed to merge full data from peer",
+					"from", SyncDataMsg.NodeName,
+					"version", SyncDataMsg.VersionData,
+					"err", ok,
+				)
+			} else {
+				writeSeedBytes(kindOk, conn, q)
+				q.logger.Debug(
+					"gossip: successfully merged full data from peer",
+					"from", SyncDataMsg.NodeName,
+					"version", SyncDataMsg.VersionData,
+				)
+			}
+
+			q.logger.Info(
+				"gossip: successfully merged full data from peer",
+				"from", SyncDataMsg.NodeName,
+				"version", SyncDataMsg.VersionData,
+			)
+			return
+		} else {
+			//version cua peer bi outdated, can cap nhat lai peer
+			//gui ca seed byte lan du lieu
+			q.logger.Warn(
+				"gossip: version data is outdated in stream sync",
+				"from", req.NodeName,
+				"version", req.VersionData,
+			)
+
+			SyncDataMsg := q.buildSyncDataMsg(kindOutdatedData)
+			writePacket(conn, kindOutdatedData, SyncDataMsg)
 			return
 		}
-
-		q.logger.Debug("gossip: stream sync request received", "from", req.NodeName, "version", req.VersionData)
-
-		if req.VersionData < registry.VersionDataBackend {
-			resp := SyncDataMsg{
-				NodeName:    q.cluster.GetSelfName(),
-				VersionData: registry.VersionDataBackend,
-				Data:        q.cluster.BuildSnapshot(),
-			}
-
-			encoder := json.NewEncoder(conn)
-			if err := encoder.Encode(resp); err != nil {
-				q.logger.Error("gossip: failed to send sync response over stream", "err", err)
-			}
-		}
-
 	default:
-		q.logger.Warn("gossip: unknown stream kind received", "kind", kind[0])
+		q.logger.Warn("gossip: unknown stream kind received", "kind", kind)
 	}
 }
 
@@ -212,48 +254,21 @@ func (q *broadcastQueue) GetBroadcasts(overhead, limit int) [][]byte {
 }
 
 func (q *broadcastQueue) LocalState(join bool) []byte {
-	backends := q.cluster.BuildSnapshot()
-	if len(backends) == 0 {
-		return nil
-	}
-
-	msg := ClusterStateMsg{
-		Backends:  backends,
-		FromLB:    q.cluster.GetSelfName(),
-		Timestamp: time.Now(),
-	}
-
-	data, err := json.Marshal(msg)
-	if err != nil {
-		q.logger.Error("gossip: failed to marshal LocalState", "err", err)
-		return nil
-	}
-
-	q.logger.Debug("gossip: LocalState called",
-		"join", join,
-		"backends", len(backends),
-	)
-	return data
+	return nil
 }
 
 func (q *broadcastQueue) MergeRemoteState(buf []byte, join bool) {
-	if len(buf) == 0 {
-		return
-	}
+}
 
-	var msg ClusterStateMsg
-	if err := json.Unmarshal(buf, &msg); err != nil {
-		q.logger.Warn("gossip: failed to unmarshal MergeRemoteState", "err", err)
-		return
+func (q *broadcastQueue) buildSyncDataMsg(kind msgKind) SyncDataMsg {
+	msg := SyncDataMsg{
+		NodeName:    q.cluster.GetSelfName(),
+		VersionData: registry.VersionDataBackend,
+		Data:        nil,
 	}
-
-	q.logger.Debug("gossip: MergeRemoteState called",
-		"join", join,
-		"from", msg.FromLB,
-		"backends", len(msg.Backends),
-	)
-
-	if q.cluster != nil {
-		q.cluster.MergeState(msg)
+	if kind == kindRequestFullData {
+		data := q.cluster.BuildSnapshot()
+		msg.Data = data
 	}
+	return msg
 }

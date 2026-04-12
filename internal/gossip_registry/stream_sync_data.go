@@ -1,7 +1,6 @@
 package gossip_registry
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
 	"time"
@@ -29,39 +28,92 @@ func (g *GossipRegistry) SyncDataViaStream(n *memberlist.Node) {
 	}
 	defer conn.Close()
 
-	//gui byte de nhan dien requset check version
-	if _, err := conn.Write([]byte{byte(kindClusterState)}); err != nil {
-		return
-	}
-
 	//gui request check version data
 	req := g.buildSyncDataMsg(kindCheckVersion)
 
-	if err := json.NewEncoder(conn).Encode(req); err != nil {
-		return
-	}
-
-	var resp SyncDataMsg
-	decoder := json.NewDecoder(conn)
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-
-	//khong pahn hoi nghia la version bang nhau
-	if err := decoder.Decode(&resp); err != nil {
-		g.logger.Debug(
-			"gossip: version data is equal in stream sync",
-			"node", n.Name,
+	if err := writePacket(conn, kindCheckVersion, req); err != nil {
+		g.logger.Warn(
+			"gossip: failed to write version check request in stream sync",
 			"err", err,
 		)
 		return
 	}
 
-	if resp.Data != nil && g.cluster != nil {
-		g.logger.Info(
-			"gossip: version data is outdated",
+	//doc phan hoi tu peer sau khi gui request check version
+	kind, resp, err := readPacketSyncDataMsg(conn)
+	if err != nil {
+		g.logger.Warn(
+			"gossip: failed to read sync response in stream sync",
+			"node", n.Name,
+		)
+		return
+	}
+
+	switch kind {
+	case kindOk:
+		//version data bang nhau khong can lam gi ca
+		g.logger.Debug(
+			"gossip: peer acknowledged version data is equal, no need to sync",
 			"from", resp.NodeName,
 			"version", resp.VersionData,
 		)
+		return
+	case kindRequestFullData:
+		//yeu cau lay du lieu data
+		//build snapshot data va gui qua ben node yeu cau
+		req := g.buildSyncDataMsg(kindRequestFullData)
+		if err := writePacket(conn, kindRequestFullData, req); err != nil {
+			g.logger.Warn(
+				"gossip: failed to write full data request in stream sync",
+				"err", err,
+			)
+			return
+		}
+		var finalStatus msgKind
+		finalStatus, _, err = readPacket(conn)
+		if err != nil {
+			g.logger.Warn(
+				"gossip: failed to read final status in stream sync",
+				"err", err,
+			)
+			return
+		}
 
+		//kiem tra trang thai cap nhat data cua peer sau khi gui du lieu
+		if finalStatus == kindOk {
+			g.logger.Debug(
+				"gossip: received OK response after full data request, no need to sync",
+				"from", resp.NodeName,
+				"version", resp.VersionData,
+			)
+		} else {
+			g.logger.Warn(
+				"gossip: peer failed to apply sync data",
+				"from", resp.NodeName,
+				"version", resp.VersionData,
+			)
+		}
+
+		return
+	case kindOutdatedData:
+		//peer tra ve ket qua version local dang loi thoi
+		g.logger.Warn(
+			"gossip: peer reported local version data is outdated, starting sync data via peer",
+			"from", resp.NodeName,
+			"version", resp.VersionData,
+		)
+		if err := g.cluster.MergeRemoteState(resp); err != nil {
+			g.logger.Warn("gossip: failed to merge state from peer", "err", err)
+			return
+		}
+		g.logger.Info("gossip: merged outdated local state from peer", "from", resp.NodeName)
+		return
+	default:
+		g.logger.Warn(
+			"gossip: unknown stream kind received",
+			"kind", kind,
+		)
+		return
 	}
 
 }
@@ -72,16 +124,10 @@ func (g *GossipRegistry) buildSyncDataMsg(kind msgKind) SyncDataMsg {
 		VersionData: registry.VersionDataBackend,
 		Data:        nil,
 	}
-	switch kind {
-	case kindCheckVersion:
-		msg.Data = nil
-		return msg
-
-	case kindRequestFullData:
+	if kind == kindRequestFullData {
 		data := g.cluster.BuildSnapshot()
 		msg.Data = data
 		return msg
-	default:
-		return msg
 	}
+	return msg
 }
