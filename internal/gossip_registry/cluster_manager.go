@@ -130,13 +130,8 @@ func (m *ClusterManager) OnHealthBroadcast(msg HealthMsg) {
 
 // nhan msg data tao 1 mapmoi torng go routine sau do  khico duoc lock ngay lap tuc automic de  trao doi du lieu
 func (m *ClusterManager) MergeRemoteState(msg SyncDataMsg) error {
+
 	return nil
-}
-
-// xu li logic merge state khi nhan duoc message state snapshot tu broadcastQueue
-// dung de dong bo toan bo state backend list
-func (m *ClusterManager) MergeState(msg ClusterStateMsg) {
-
 }
 
 func (m *ClusterManager) GetSelfName() string {

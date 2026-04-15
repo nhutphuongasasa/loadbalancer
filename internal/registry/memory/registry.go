@@ -13,14 +13,15 @@ import (
 
 // phai dua redis luu services
 type InMemoryRegistry struct {
-	mux             sync.RWMutex
-	services        map[string]map[string]*model.Server
-	updateChan      chan *model.Server
-	workers         map[string]*workerState
-	workersMux      sync.Mutex
-	checkInterval   time.Duration
-	versionData     int64
-	providerChannel provider.ProviderChannel
+	mux              sync.RWMutex
+	services         map[string]map[string]*model.Server
+	checksumServices map[string]uint64
+	updateChan       chan *model.Server
+	workers          map[string]*workerState
+	workersMux       sync.Mutex
+	checkInterval    time.Duration
+	versionData      int64
+	providerChannel  provider.ProviderChannel
 
 	logger *slog.Logger
 
@@ -143,4 +144,8 @@ func (r *InMemoryRegistry) loopRemoveServers() {
 			delete(r.services, serviceName)
 		}
 	}
+}
+
+func (r *InMemoryRegistry) GetChecksum() map[string]uint64 {
+	return r.checksumServices
 }

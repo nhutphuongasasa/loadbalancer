@@ -37,7 +37,7 @@ func (r *InMemoryRegistry) Register(srv *model.Server) error {
 
 	r.setupNewInstance(srv)
 
-	r.ensureWorkerForService(srv.ServiceName)
+	// r.ensureWorkerForService(srv.ServiceName)
 
 	r.updateGlobalInstanceVersionData(registry.VersionDataBackend + 1)
 	r.logger.Info("Server registered", "service", srv.ServiceName, "id", srv.InstanceID)

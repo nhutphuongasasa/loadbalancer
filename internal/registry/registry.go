@@ -21,6 +21,9 @@ type RegistryAdapter interface {
 	ListAll() map[string][]*model.Server
 
 	GetVersionData() VersionData
+
+	RefreshAllChecksums()
+	GetChecksum() map[string]uint64
 }
 
 var GlobalBaseTransport = &http.Transport{

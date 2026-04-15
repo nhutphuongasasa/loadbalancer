@@ -6,13 +6,12 @@ import (
 	"time"
 
 	"github.com/hashicorp/memberlist"
-	"github.com/nhutphuongasasa/loadbalancer/internal/registry"
 )
 
 type SyncDataMsg struct {
-	NodeName    string                       `json:"node_name"`
-	VersionData registry.VersionData         `json:"version_data"`
-	Data        map[string][]BackendSnapshot `json:"data"`
+	NodeName     string                       `json:"node_name"`
+	checksumData map[string]uint64            `json:"checksum_data"`
+	Data         map[string][]BackendSnapshot `json:"data"`
 }
 
 func (g *GossipRegistry) SyncDataViaStream(n *memberlist.Node) {
@@ -28,10 +27,10 @@ func (g *GossipRegistry) SyncDataViaStream(n *memberlist.Node) {
 	}
 	defer conn.Close()
 
-	//gui request check version data
-	req := g.buildSyncDataMsg(kindCheckVersion)
+	//gui request checksum data
+	req := g.buildSyncDataMsg(kindCheckSum)
 
-	if err := writePacket(conn, kindCheckVersion, req); err != nil {
+	if err := writePacket(conn, kindCheckSum, req); err != nil {
 		g.logger.Warn(
 			"gossip: failed to write version check request in stream sync",
 			"err", err,
@@ -55,7 +54,6 @@ func (g *GossipRegistry) SyncDataViaStream(n *memberlist.Node) {
 		g.logger.Debug(
 			"gossip: peer acknowledged version data is equal, no need to sync",
 			"from", resp.NodeName,
-			"version", resp.VersionData,
 		)
 		return
 	case kindRequestFullData:
@@ -84,13 +82,11 @@ func (g *GossipRegistry) SyncDataViaStream(n *memberlist.Node) {
 			g.logger.Debug(
 				"gossip: received OK response after full data request, no need to sync",
 				"from", resp.NodeName,
-				"version", resp.VersionData,
 			)
 		} else {
 			g.logger.Warn(
 				"gossip: peer failed to apply sync data",
 				"from", resp.NodeName,
-				"version", resp.VersionData,
 			)
 		}
 
@@ -100,7 +96,6 @@ func (g *GossipRegistry) SyncDataViaStream(n *memberlist.Node) {
 		g.logger.Warn(
 			"gossip: peer reported local version data is outdated, starting sync data via peer",
 			"from", resp.NodeName,
-			"version", resp.VersionData,
 		)
 		if err := g.cluster.MergeRemoteState(resp); err != nil {
 			g.logger.Warn("gossip: failed to merge state from peer", "err", err)
@@ -119,10 +114,11 @@ func (g *GossipRegistry) SyncDataViaStream(n *memberlist.Node) {
 }
 
 func (g *GossipRegistry) buildSyncDataMsg(kind msgKind) SyncDataMsg {
+	checksumData := g.cluster.reg.GetChecksum()
 	msg := SyncDataMsg{
-		NodeName:    g.selfName,
-		VersionData: registry.VersionDataBackend,
-		Data:        nil,
+		NodeName:     g.selfName,
+		checksumData: checksumData,
+		Data:         nil,
 	}
 	if kind == kindRequestFullData {
 		data := g.cluster.BuildSnapshot()

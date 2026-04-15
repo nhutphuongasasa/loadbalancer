@@ -21,6 +21,7 @@ const (
 	kindCheckVersion    msgKind = 0x10
 	kindRequestFullData msgKind = 0x11
 	kindOutdatedData    msgKind = 0x12
+	kindCheckSum        msgKind = 0x13
 )
 
 const (
@@ -92,7 +93,7 @@ type BackendSnapshot struct {
 }
 
 type ClusterEventHandler interface {
-	MergeState(msg ClusterStateMsg)
+	// MergeState(msg ClusterStateMsg)
 	OnHealthBroadcast(msg HealthMsg)
 	BuildSnapshot() map[string][]BackendSnapshot
 	GetSelfName() string
