@@ -24,6 +24,7 @@ type RegistryAdapter interface {
 
 	RefreshAllChecksums()
 	GetChecksum() map[string]uint64
+	CompareAndFetch(remoteChecksums map[string]uint64) map[string]map[string]*model.Server
 }
 
 var GlobalBaseTransport = &http.Transport{

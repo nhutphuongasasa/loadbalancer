@@ -141,7 +141,3 @@ type nodeMeta struct {
 	*broadcastQueue
 	meta []byte
 }
-
-func (n *nodeMeta) NodeMeta(_ int) []byte {
-	return n.meta
-}

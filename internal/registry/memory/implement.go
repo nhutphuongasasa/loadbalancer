@@ -37,7 +37,7 @@ func (r *InMemoryRegistry) Register(srv *model.Server) error {
 
 	r.setupNewInstance(srv)
 
-	// r.ensureWorkerForService(srv.ServiceName)
+	r.isDirty = true
 
 	r.updateGlobalInstanceVersionData(registry.VersionDataBackend + 1)
 	r.logger.Info("Server registered", "service", srv.ServiceName, "id", srv.InstanceID)
@@ -101,6 +101,7 @@ func (r *InMemoryRegistry) Deregister(serviceName, instanceID string) error {
 			}
 
 			r.updateGlobalInstanceVersionData(registry.VersionDataBackend + 1)
+			r.isDirty = true
 			r.logger.Info("Server deregistered", "service", serviceName, "id", instanceID)
 			return nil
 		}
@@ -124,6 +125,7 @@ func (r *InMemoryRegistry) UpdateStatus(serviceName, instanceID string, alive bo
 			// day vao channel de update server_pool
 			r.updateChan <- existing
 			r.updateGlobalInstanceVersionData(registry.VersionDataBackend + 1)
+			r.isDirty = registry.GlobalBaseTransport.Clone().Protocols.UnencryptedHTTP2()
 			r.logger.Debug("Health state changed",
 				"service", serviceName,
 				"id", instanceID,

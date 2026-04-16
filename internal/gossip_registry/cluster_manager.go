@@ -138,6 +138,10 @@ func (m *ClusterManager) GetSelfName() string {
 	return m.selfName
 }
 
+func (m *ClusterManager) GetCheckRegisterAdapter() registry.RegistryAdapter {
+	return m.reg
+}
+
 // tao state snapshot cua lb hien tai
 func (m *ClusterManager) BuildSnapshot() map[string][]BackendSnapshot {
 	servers := m.reg.ListAll()

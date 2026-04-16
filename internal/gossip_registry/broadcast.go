@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/hashicorp/memberlist"
-	"github.com/nhutphuongasasa/loadbalancer/internal/registry"
 )
 
 // broadcastQueue quản lý broadcast queue và implement memberlist.Delegate
@@ -84,8 +83,8 @@ func (q *broadcastQueue) HandleStream(conn net.Conn) {
 	defer conn.Close()
 	conn.SetDeadline(time.Now().Add(10 * time.Second))
 
-	//doc byte dau tien de biet yeu cau
-	kind, req, err := readPacketSyncDataMsg(conn)
+	//doc 5 byte dau tien de biet kind va length
+	kind, msg, err := readPacketSyncDataMsg(conn)
 	if err != nil {
 		q.logger.Warn(
 			"gossip: failed to read packet sync data msg",
@@ -95,87 +94,19 @@ func (q *broadcastQueue) HandleStream(conn net.Conn) {
 	}
 
 	switch kind {
-	case kindCheckVersion:
-		localVersion := registry.VersionDataBackend
+	case kindCheckSum:
+		//thuc hien check data khac biet
+		result := q.cluster.GetCheckRegisterAdapter().CompareAndFetch(msg.checksumData)
 
-		if req.VersionData == localVersion {
-			//version ban nhau khong can gui du lieu
-			q.logger.Info(
-				"gossip: version data is equal in stream sync",
-				"from", req.NodeName,
-				"version", req.VersionData,
-			)
+		//khong co su khac biet tra ve kindOk
+		if result == nil {
 
-			writeSeedBytes(kindOk, conn, q)
-			return
-		} else if req.VersionData > localVersion {
-			//local version  dang cu cna duoc cap nhat tu node gui reqquest
-			writeSeedBytes(kindOutdatedData, conn, q)
-
-			//nhan data snapshot du lieu tu peer
-			kind, SyncDataMsg, err := readPacketSyncDataMsg(conn)
-			if err != nil {
-				q.logger.Warn(
-					"gossip: failed to read packet sync data msg",
-					"err", err,
-				)
-				return
-			}
-			if kind != kindRequestFullData {
-				q.logger.Warn(
-					"gossip: unexpected kind received in stream sync",
-					"kind", kind,
-				)
-				return
-			}
-
-			//tien hanh cap nhat data cua local lb
-			q.logger.Debug(
-				"Starting sync data local lb ",
-				"from peer", SyncDataMsg.NodeName,
-				"version merge remote", SyncDataMsg.VersionData,
-				"data", SyncDataMsg.Data,
-			)
-
-			ok := q.cluster.MergeRemoteState(SyncDataMsg)
-
-			//gui response OK sau khi cap nhat xong
-			if ok != nil {
-				writeSeedBytes(kindFailed, conn, q)
-				q.logger.Warn(
-					"gossip: failed to merge full data from peer",
-					"from", SyncDataMsg.NodeName,
-					"version", SyncDataMsg.VersionData,
-					"err", ok,
-				)
-			} else {
-				writeSeedBytes(kindOk, conn, q)
-				q.logger.Debug(
-					"gossip: successfully merged full data from peer",
-					"from", SyncDataMsg.NodeName,
-					"version", SyncDataMsg.VersionData,
-				)
-			}
-
-			q.logger.Info(
-				"gossip: successfully merged full data from peer",
-				"from", SyncDataMsg.NodeName,
-				"version", SyncDataMsg.VersionData,
-			)
-			return
-		} else {
-			//version cua peer bi outdated, can cap nhat lai peer
-			//gui ca seed byte lan du lieu
-			q.logger.Warn(
-				"gossip: version data is outdated in stream sync",
-				"from", req.NodeName,
-				"version", req.VersionData,
-			)
-
-			SyncDataMsg := q.buildSyncDataMsg(kindOutdatedData)
-			writePacket(conn, kindOutdatedData, SyncDataMsg)
-			return
 		}
+
+		//co su khac biet tra ve danh danh sach backend qua ben kia
+		//nhan danh sach back end cua ben kia tu so sanh
+		//neu chua co thi them vao neu co roi thi check version cua back end ai cao hon thi dung cai do cung luc dong ket noi tcp
+
 	default:
 		q.logger.Warn("gossip: unknown stream kind received", "kind", kind)
 	}
@@ -227,19 +158,8 @@ func (q *broadcastQueue) NotifyMsg(b []byte) {
 		q.logger.Debug(
 			"gossip: check version received",
 			"from", msg.NodeName,
-			"version", msg.VersionData,
 		)
 
-		if q.cluster != nil {
-			if msg.VersionData == registry.VersionDataBackend {
-
-			} else {
-				if msg.VersionData < registry.VersionDataBackend {
-
-				} else {
-				}
-			}
-		}
 	case kindSecurity:
 		// handle security msg (nếu có)
 
@@ -262,9 +182,8 @@ func (q *broadcastQueue) MergeRemoteState(buf []byte, join bool) {
 
 func (q *broadcastQueue) buildSyncDataMsg(kind msgKind) SyncDataMsg {
 	msg := SyncDataMsg{
-		NodeName:    q.cluster.GetSelfName(),
-		VersionData: registry.VersionDataBackend,
-		Data:        nil,
+		NodeName: q.cluster.GetSelfName(),
+		Data:     nil,
 	}
 	if kind == kindRequestFullData {
 		data := q.cluster.BuildSnapshot()

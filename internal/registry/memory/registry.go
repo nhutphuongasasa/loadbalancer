@@ -20,7 +20,7 @@ type InMemoryRegistry struct {
 	workers          map[string]*workerState
 	workersMux       sync.Mutex
 	checkInterval    time.Duration
-	versionData      int64
+	isDirty          bool
 	providerChannel  provider.ProviderChannel
 
 	logger *slog.Logger

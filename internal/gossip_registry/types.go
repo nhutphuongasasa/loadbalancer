@@ -3,6 +3,8 @@ package gossip_registry
 import (
 	"encoding/json"
 	"time"
+
+	"github.com/nhutphuongasasa/loadbalancer/internal/registry"
 )
 
 type msgKind byte
@@ -93,7 +95,7 @@ type BackendSnapshot struct {
 }
 
 type ClusterEventHandler interface {
-	// MergeState(msg ClusterStateMsg)
+	GetCheckRegisterAdapter() registry.RegistryAdapter
 	OnHealthBroadcast(msg HealthMsg)
 	BuildSnapshot() map[string][]BackendSnapshot
 	GetSelfName() string

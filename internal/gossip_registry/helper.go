@@ -71,6 +71,19 @@ func writePacket(conn net.Conn, kind msgKind, v any) error {
 	return err
 }
 
+func readPacketSyncDataMsg(conn net.Conn) (kind msgKind, msg SyncDataMsg, err error) {
+	kind, payload, err := readPacket(conn)
+	if err != nil {
+		return 0, SyncDataMsg{}, err
+	}
+
+	if err := json.Unmarshal(payload, &msg); err != nil {
+		return 0, SyncDataMsg{}, err
+	}
+
+	return kind, msg, nil
+}
+
 // helper giai ma packet with header 5 bytes: 1 byte Kind + 4 bytes Length
 func readPacket(conn net.Conn) (msgKind, []byte, error) {
 	header := make([]byte, 5)
@@ -91,19 +104,6 @@ func readPacket(conn net.Conn) (msgKind, []byte, error) {
 	}
 
 	return kind, payload, nil
-}
-
-func readPacketSyncDataMsg(conn net.Conn) (kind msgKind, msg SyncDataMsg, err error) {
-	kind, payload, err := readPacket(conn)
-	if err != nil {
-		return 0, SyncDataMsg{}, err
-	}
-
-	if err := json.Unmarshal(payload, &msg); err != nil {
-		return 0, SyncDataMsg{}, err
-	}
-
-	return kind, msg, nil
 }
 
 func writeBytes(kind msgKind, conn net.Conn, q *broadcastQueue) error {
