@@ -22,6 +22,9 @@ type RegistryAdapter interface {
 
 	GetVersionData() VersionData
 
+	MergeServices(incoming map[string]map[string]*model.Server)
+
+	FetchByServiceNames(names []string) map[string]map[string]*model.Server
 	RefreshAllChecksums()
 	GetChecksum() map[string]uint64
 	CompareAndFetch(remoteChecksums map[string]uint64) map[string]map[string]*model.Server

@@ -186,3 +186,63 @@ func (r *InMemoryRegistry) ListAll() map[string][]*model.Server {
 func (r *InMemoryRegistry) updateGlobalInstanceVersionData(version registry.VersionData) {
 	registry.VersionDataBackend = registry.VersionData(version)
 }
+
+// MergeServices nhận data từ peer và merge vào registry:
+// - Service/instance chưa có -> thêm vào
+// - Service/instance đã có -> giữ cái có version cao hơn
+func (r *InMemoryRegistry) MergeServices(incoming map[string]map[string]*model.Server) {
+	if len(incoming) == 0 {
+		return
+	}
+
+	r.mux.Lock()
+	defer r.mux.Unlock()
+
+	for serviceName, incomingInstances := range incoming {
+		r.mergeServiceInstances(serviceName, incomingInstances)
+	}
+
+	r.isDirty = true
+}
+
+// mergeServiceInstances xử lý merge cho từng service
+func (r *InMemoryRegistry) mergeServiceInstances(serviceName string, incomingInstances map[string]*model.Server) {
+	// Service chưa có trong local -> thêm toàn bộ
+	if _, exists := r.services[serviceName]; !exists {
+		r.services[serviceName] = make(map[string]*model.Server, len(incomingInstances))
+	}
+
+	for instanceID, incomingSrv := range incomingInstances {
+		r.mergeOneInstance(serviceName, instanceID, incomingSrv)
+	}
+}
+
+// mergeOneInstance so sánh version và chọn instance mới hơn
+func (r *InMemoryRegistry) mergeOneInstance(serviceName, instanceID string, incomingSrv *model.Server) {
+	localSrv, exists := r.services[serviceName][instanceID]
+
+	// Instance chưa có trong local -> thêm vào
+	if !exists {
+		r.services[serviceName][instanceID] = incomingSrv
+		return
+	}
+
+	// Cả hai đều có -> giữ cái version cao hơn
+	if incomingSrv.GetVersion() > localSrv.GetVersion() {
+		r.services[serviceName][instanceID] = incomingSrv
+	}
+}
+
+// FetchByServiceNames lấy đúng các service được yêu cầu
+func (r *InMemoryRegistry) FetchByServiceNames(names []string) map[string]map[string]*model.Server {
+	r.mux.RLock()
+	defer r.mux.RUnlock()
+
+	result := make(map[string]map[string]*model.Server, len(names))
+	for _, serviceName := range names {
+		if instances, ok := r.services[serviceName]; ok && len(instances) > 0 {
+			result[serviceName] = r.copyServiceInstances(serviceName)
+		}
+	}
+	return result
+}

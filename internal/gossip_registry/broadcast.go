@@ -109,21 +109,6 @@ func (q *broadcastQueue) NotifyMsg(b []byte) {
 			"from", msg.SourceLB,
 		)
 
-	case kindCheckVersion:
-		var msg SyncDataMsg
-		if err := json.Unmarshal(payload, &msg); err != nil {
-			q.logger.Warn(
-				"gossip: failed to unmarshal check version msg",
-				"err", err,
-			)
-			return
-		}
-
-		q.logger.Debug(
-			"gossip: check version received",
-			"from", msg.NodeName,
-		)
-
 	case kindSecurity:
 		// handle security msg (nếu có)
 

@@ -49,50 +49,34 @@ func (g *GossipFactory) SyncDataViaStream(n *memberlist.Node) {
 	}
 
 	switch kind {
-	case kindOk:
+	case kindACK:
 		g.logger.Debug(
 			"gossip: peer acknowledged version data is equal, no need to sync",
 			"from", resp.NodeName,
 		)
 		return
-	case kindRequestFullData:
-		//du leiu checksum co su khac biet nhan danh scah su khac biet va gui dnah scah data do cho peer
 
-		req := g.buildSyncDataMsg(kindRequestFullData)
-		if err := writePacket(conn, kindRequestFullData, req); err != nil {
-			g.logger.Warn(
-				"gossip: failed to write full data request in stream sync",
-				"err", err,
-			)
-			return
-		}
-		var finalStatus msgKind
-		finalStatus, _, err = readPacket(conn)
-		if err != nil {
-			g.logger.Warn(
-				"gossip: failed to read final status in stream sync",
-				"err", err,
-			)
-			return
-		}
-
-		//kiem tra trang thai cap nhat data cua peer sau khi gui du lieu
-		if finalStatus == kindOk {
-			g.logger.Debug(
-				"gossip: received OK response after full data request, no need to sync",
-				"from", resp.NodeName,
-			)
-		} else {
-			g.logger.Warn(
-				"gossip: peer failed to apply sync data",
-				"from", resp.NodeName,
-			)
-		}
-
-		return
 	case kindOutdatedData:
-		//peer tra ve ket qua version local dang loi thoi
+		// Merge data listener gửi về (những gì dialer đang thiếu)
+		if resp.Data != nil {
+			g.logger.Debug(
+				"gossip: received outdated data from listener, merging",
+				"from", resp.NodeName,
+				"services", len(resp.Data),
+			)
+			converted := convertSnapshotToServers(resp.Data)
+			g.cluster.reg.MergeServices(converted)
+		}
 
+		// Gửi ngược lại đúng các serviceName mà listener quan tâm
+		localData := g.cluster.GetCheckRegisterAdapter().FetchByServiceNames(serviceNamesFrom(resp.Data))
+		replyMsg := SyncDataMsg{
+			NodeName: g.cluster.selfName,
+			Data:     convertServersToSnapshot(localData),
+		}
+		if err := writePacket(conn, kindOutdatedData, replyMsg); err != nil {
+			g.logger.Warn("gossip: failed to send local data back to listener", "err", err)
+		}
 	default:
 		g.logger.Warn(
 			"gossip: unknown stream kind received",
@@ -110,10 +94,14 @@ func (g *GossipFactory) buildSyncDataMsg(kind msgKind) SyncDataMsg {
 		ChecksumData: checksumData,
 		Data:         nil,
 	}
-	if kind == kindRequestFullData {
-		data := g.cluster.BuildSnapshot()
-		msg.Data = data
-		return msg
-	}
+
 	return msg
+}
+
+func serviceNamesFrom(data map[string][]BackendSnapshot) []string {
+	names := make([]string, 0, len(data))
+	for serviceName := range data {
+		names = append(names, serviceName)
+	}
+	return names
 }

@@ -7,6 +7,7 @@ import (
 	"net"
 
 	"github.com/hashicorp/memberlist"
+	"github.com/nhutphuongasasa/loadbalancer/internal/model"
 )
 
 // encodeFrame encapsulates message voi 1 byte header de phan biet loai message.
@@ -111,4 +112,53 @@ func writeBytes(kind msgKind, conn net.Conn, q *broadcastQueue) error {
 		return err
 	}
 	return nil
+}
+
+// convertServersToSnapshot chuyển map[serviceName]map[instanceID]*model.Server
+// thành map[serviceName][]BackendSnapshot để gửi qua wire
+func convertServersToSnapshot(data map[string]map[string]*model.Server) map[string][]BackendSnapshot {
+	result := make(map[string][]BackendSnapshot, len(data))
+
+	for serviceName, instances := range data {
+		snapshots := make([]BackendSnapshot, 0, len(instances))
+		for _, srv := range instances {
+			snapshots = append(snapshots, BackendSnapshot{
+				InstanceID:  srv.InstanceID,
+				ServiceName: srv.ServiceName,
+				Host:        srv.Host,
+				Port:        srv.Port,
+				Weight:      srv.GetWeight(),
+				Alive:       srv.IsHealthy(),
+			})
+		}
+		result[serviceName] = snapshots
+	}
+
+	return result
+}
+
+// convertSnapshotToServers chuyển đổi map[serviceName][]BackendSnapshot
+// thành map[serviceName]map[instanceID]*model.Server để merge vào registry
+func convertSnapshotToServers(data map[string][]BackendSnapshot) map[string]map[string]*model.Server {
+	result := make(map[string]map[string]*model.Server, len(data))
+
+	for serviceName, snapshots := range data {
+		instances := make(map[string]*model.Server, len(snapshots))
+		for _, snap := range snapshots {
+			srv := model.NewServer(
+				snap.InstanceID,
+				snap.ServiceName,
+				snap.Host,
+				snap.Port,
+				snap.Weight,
+				nil, // metadata
+				nil, // transport
+			)
+			srv.SetAlive(snap.Alive)
+			instances[snap.InstanceID] = srv
+		}
+		result[serviceName] = instances
+	}
+
+	return result
 }

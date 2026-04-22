@@ -18,10 +18,8 @@ const (
 	kindHealthAndWeight msgKind = 0x01
 	kindClusterState    msgKind = 0x02
 	kindSecurity        msgKind = 0x03
-	kindOk              msgKind = 0x07
-	kindFailed          msgKind = 0x08
-	kindCheckVersion    msgKind = 0x10
-	kindRequestFullData msgKind = 0x11
+	kindACK             msgKind = 0x07
+	kindError           msgKind = 0x08
 	kindOutdatedData    msgKind = 0x12
 	kindCheckSum        msgKind = 0x13
 )

@@ -30,6 +30,7 @@ type Server struct {
 	ServiceName string
 	Host        string
 	Port        int
+	version     int
 	Health      bool
 	LastSeen    time.Time
 	Metadata    map[string]string
@@ -179,4 +180,10 @@ func (s *Server) IsExpired(now time.Time) bool {
 	defer s.mux.RUnlock()
 
 	return now.After(s.LastSeen.Add(s.TTL))
+}
+
+func (s *Server) GetVersion() int {
+	s.mux.RLock()
+	defer s.mux.RUnlock()
+	return s.version
 }

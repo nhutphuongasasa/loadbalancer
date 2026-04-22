@@ -27,12 +27,25 @@ func (g *GossipFactory) HandleStream(conn net.Conn) {
 
 		if result == nil {
 			//khong co su khac biet tra ve kindOk
-			writePacket(conn, kindOk, nil)
+			writePacket(conn, kindACK, nil)
 		} else {
 			//co su khac biet tra ve danh danh sach backend qua ben kia
+			writePacket(conn, kindOutdatedData, result)
+
 			//nhan danh sach back end cua ben kia tu so sanh
 			//neu chua co thi them vao neu co roi thi check version cua back end ai cao hon thi dung cai do cung luc dong ket noi tcp
+			// Đọc data peer gửi ngược lại
+			_, peerResp, err := readPacketSyncDataMsg(conn)
+			if err != nil {
+				g.logger.Warn("gossip: failed to read peer data", "err", err)
+				return
+			}
 
+			// Merge vào local registry
+			if peerResp.Data != nil {
+				converted := convertSnapshotToServers(peerResp.Data)
+				g.cluster.reg.MergeServices(converted)
+			}
 		}
 
 	default:
