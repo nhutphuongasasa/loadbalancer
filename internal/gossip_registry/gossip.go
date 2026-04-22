@@ -11,15 +11,13 @@ import (
 	"github.com/nhutphuongasasa/loadbalancer/internal/registry"
 )
 
-type GossipRegistry struct {
-	cfg     *memberlist.Config
-	list    *memberlist.Memberlist
-	cluster *ClusterManager
-	queue   *broadcastQueue
-
-	mu       sync.Mutex
+type GossipFactory struct {
+	cfg      *memberlist.Config
+	list     *memberlist.Memberlist
+	cluster  *ClusterManager
+	queue    *broadcastQueue
 	isJoined bool
-	selfName string
+	mu       sync.Mutex
 	logger   *slog.Logger
 }
 
@@ -30,7 +28,7 @@ type Options struct {
 	Logger        *slog.Logger
 }
 
-func NewGossipRegistry(opts Options, reg registry.RegistryAdapter) *GossipRegistry {
+func NewGossipRegistry(opts Options, reg registry.RegistryAdapter) *GossipFactory {
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
 	}
@@ -39,11 +37,9 @@ func NewGossipRegistry(opts Options, reg registry.RegistryAdapter) *GossipRegist
 
 	queue := newBroadcastQueue(clusterMgr, opts.Logger)
 
-	clusterMgr.setQueue(queue)
-
 	clusterDelegate := newClusterDelegate(clusterMgr, opts.Logger)
 
-	eventDelegate := newEventDelegate(reg, clusterDelegate, queue, opts.Logger)
+	eventDelegate := newEventDelegate(clusterDelegate, opts.Logger)
 
 	cfg := memberlist.DefaultLANConfig()
 	cfg.Name = opts.NodeName
@@ -53,16 +49,15 @@ func NewGossipRegistry(opts Options, reg registry.RegistryAdapter) *GossipRegist
 	cfg.Events = eventDelegate
 	cfg.PushPullInterval = 0 //disable push/pull tu custom sync data
 
-	return &GossipRegistry{
-		cfg:      cfg,
-		cluster:  clusterMgr,
-		queue:    queue,
-		selfName: opts.NodeName,
-		logger:   opts.Logger,
+	return &GossipFactory{
+		cfg:     cfg,
+		cluster: clusterMgr,
+		queue:   queue,
+		logger:  opts.Logger,
 	}
 }
 
-func (g *GossipRegistry) Start(opts Options, seeds []string) error {
+func (g *GossipFactory) Start(opts Options, seeds []string) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
@@ -93,23 +88,30 @@ func (g *GossipRegistry) Start(opts Options, seeds []string) error {
 	if len(seeds) > 0 {
 		n, err := list.Join(seeds)
 		if err != nil {
-			g.logger.Warn("gossip: initial join partial",
-				"contacted", n, "err", err)
+			g.logger.Warn(
+				"gossip: initial join partial",
+				"contacted", n,
+				"err", err,
+			)
 		} else {
 			g.isJoined = true
-			g.logger.Info("gossip: joined cluster",
-				"node", g.selfName,
+			g.logger.Info(
+				"gossip: joined cluster",
+				"node", g.cluster.selfName,
 				"peers_contacted", n,
 			)
 		}
 	} else {
 		g.isJoined = true
-		g.logger.Info("gossip: started single-node cluster", "node", g.selfName)
+		g.logger.Info(
+			"gossip: started single-node cluster",
+			"node", g.cluster.selfName,
+		)
 	}
 	return nil
 }
 
-func (g *GossipRegistry) Stop() {
+func (g *GossipFactory) Stop() {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
@@ -121,14 +123,17 @@ func (g *GossipRegistry) Stop() {
 	}
 	_ = g.list.Shutdown()
 	g.isJoined = false
-	g.logger.Info("gossip: stopped", "node", g.selfName)
+	g.logger.Info(
+		"gossip: stopped",
+		"node", g.cluster.selfName,
+	)
 }
 
-func (g *GossipRegistry) GetCluster() *ClusterManager {
+func (g *GossipFactory) GetCluster() *ClusterManager {
 	return g.cluster
 }
 
-func (g *GossipRegistry) GetNumberOfMembers() int {
+func (g *GossipFactory) GetNumberOfMembers() int {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.list == nil {

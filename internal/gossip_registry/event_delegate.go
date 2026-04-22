@@ -4,30 +4,22 @@ import (
 	"log/slog"
 
 	"github.com/hashicorp/memberlist"
-	"github.com/nhutphuongasasa/loadbalancer/internal/registry"
 )
 
 // EventDelegate implement memberlist.EventDelegate.
-// Chi xu i cac event co  role=backend nghia la chi xu ly eventt cua aget.
-// Các node role=lb được forward sang ClusterDelegate.
+// noi phan loai event delaget de day xuong agent event va cluster event
 type EventDelegate struct {
-	registryList    registry.RegistryAdapter
 	clusterDelegate *ClusterDelegate
 	agentDelegate   *AgentDelegate
-	queue           *broadcastQueue
 	logger          *slog.Logger
 }
 
 func newEventDelegate(
-	r registry.RegistryAdapter,
 	cd *ClusterDelegate,
-	q *broadcastQueue,
 	log *slog.Logger,
 ) *EventDelegate {
 	return &EventDelegate{
-		registryList:    r,
 		clusterDelegate: cd,
-		queue:           q,
 		logger:          log,
 	}
 }

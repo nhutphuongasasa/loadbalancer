@@ -98,8 +98,8 @@ type ClusterEventHandler interface {
 	GetCheckRegisterAdapter() registry.RegistryAdapter
 	OnHealthBroadcast(msg HealthMsg)
 	BuildSnapshot() map[string][]BackendSnapshot
-	GetSelfName() string
-	MergeRemoteState(msg SyncDataMsg) error
+	// GetSelfName() string
+	// MergeRemoteState(msg SyncDataMsg) error
 }
 
 type AgentAction string

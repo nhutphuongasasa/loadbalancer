@@ -10,11 +10,11 @@ import (
 
 type SyncDataMsg struct {
 	NodeName     string                       `json:"node_name"`
-	checksumData map[string]uint64            `json:"checksum_data"`
+	ChecksumData map[string]uint64            `json:"checksum_data"`
 	Data         map[string][]BackendSnapshot `json:"data"`
 }
 
-func (g *GossipRegistry) SyncDataViaStream(n *memberlist.Node) {
+func (g *GossipFactory) SyncDataViaStream(n *memberlist.Node) {
 	address := net.JoinHostPort(n.Addr.String(), fmt.Sprintf("%d", n.Port))
 	conn, err := net.DialTimeout("tcp", address, 5*time.Second)
 	if err != nil {
@@ -38,7 +38,7 @@ func (g *GossipRegistry) SyncDataViaStream(n *memberlist.Node) {
 		return
 	}
 
-	//doc phan hoi tu peer sau khi gui request check version
+	//doc phan hoi tu peer
 	kind, resp, err := readPacketSyncDataMsg(conn)
 	if err != nil {
 		g.logger.Warn(
@@ -50,15 +50,14 @@ func (g *GossipRegistry) SyncDataViaStream(n *memberlist.Node) {
 
 	switch kind {
 	case kindOk:
-		//version data bang nhau khong can lam gi ca
 		g.logger.Debug(
 			"gossip: peer acknowledged version data is equal, no need to sync",
 			"from", resp.NodeName,
 		)
 		return
 	case kindRequestFullData:
-		//yeu cau lay du lieu data
-		//build snapshot data va gui qua ben node yeu cau
+		//du leiu checksum co su khac biet nhan danh scah su khac biet va gui dnah scah data do cho peer
+
 		req := g.buildSyncDataMsg(kindRequestFullData)
 		if err := writePacket(conn, kindRequestFullData, req); err != nil {
 			g.logger.Warn(
@@ -93,16 +92,7 @@ func (g *GossipRegistry) SyncDataViaStream(n *memberlist.Node) {
 		return
 	case kindOutdatedData:
 		//peer tra ve ket qua version local dang loi thoi
-		g.logger.Warn(
-			"gossip: peer reported local version data is outdated, starting sync data via peer",
-			"from", resp.NodeName,
-		)
-		if err := g.cluster.MergeRemoteState(resp); err != nil {
-			g.logger.Warn("gossip: failed to merge state from peer", "err", err)
-			return
-		}
-		g.logger.Info("gossip: merged outdated local state from peer", "from", resp.NodeName)
-		return
+
 	default:
 		g.logger.Warn(
 			"gossip: unknown stream kind received",
@@ -113,11 +103,11 @@ func (g *GossipRegistry) SyncDataViaStream(n *memberlist.Node) {
 
 }
 
-func (g *GossipRegistry) buildSyncDataMsg(kind msgKind) SyncDataMsg {
+func (g *GossipFactory) buildSyncDataMsg(kind msgKind) SyncDataMsg {
 	checksumData := g.cluster.reg.GetChecksum()
 	msg := SyncDataMsg{
-		NodeName:     g.selfName,
-		checksumData: checksumData,
+		NodeName:     g.cluster.selfName,
+		ChecksumData: checksumData,
 		Data:         nil,
 	}
 	if kind == kindRequestFullData {

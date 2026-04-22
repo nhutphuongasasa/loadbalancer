@@ -11,16 +11,11 @@ import (
 
 // quan li cac node lb cluster
 type ClusterManager struct {
-	mu sync.RWMutex
-
-	selfName string                 // ten cua lb node nay
-	nodes    map[string]*LBNodeInfo // key = node Name
-	reg      registry.RegistryAdapter
-
-	// queue dung de gui state snapshot den node LB moi join.
-	queue *broadcastQueue
-
-	logger *slog.Logger
+	selfName string                   // ten cua lb node nay
+	nodes    map[string]*LBNodeInfo   // thong tin cac node lb khac
+	reg      registry.RegistryAdapter //noi quan li danh sach server
+	mu       sync.RWMutex
+	logger   *slog.Logger
 }
 
 // selfName: ten cua lb node nay trung voi name trong memberlist.config khi duoc khoi tao
@@ -34,12 +29,6 @@ func NewClusterManager(selfName string, reg registry.RegistryAdapter, log *slog.
 		reg:      reg,
 		logger:   log,
 	}
-}
-
-func (m *ClusterManager) setQueue(q *broadcastQueue) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.queue = q
 }
 
 // thuc thi khi co lb moi join vao cluster
@@ -126,16 +115,6 @@ func (m *ClusterManager) OnHealthBroadcast(msg HealthMsg) {
 		"alive", msg.Alive,
 		"reported_by", msg.SourceLB,
 	)
-}
-
-// nhan msg data tao 1 mapmoi torng go routine sau do  khico duoc lock ngay lap tuc automic de  trao doi du lieu
-func (m *ClusterManager) MergeRemoteState(msg SyncDataMsg) error {
-
-	return nil
-}
-
-func (m *ClusterManager) GetSelfName() string {
-	return m.selfName
 }
 
 func (m *ClusterManager) GetCheckRegisterAdapter() registry.RegistryAdapter {

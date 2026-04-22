@@ -3,9 +3,7 @@ package gossip_registry
 import (
 	"encoding/json"
 	"log/slog"
-	"net"
 	"sync"
-	"time"
 
 	"github.com/hashicorp/memberlist"
 )
@@ -78,40 +76,6 @@ func (q *broadcastQueue) NodeMeta(limit int) []byte {
 	return q.selfMeta
 }
 
-// giu ket noi tcp de cac node khac phuc vu dong bo data custom
-func (q *broadcastQueue) HandleStream(conn net.Conn) {
-	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(10 * time.Second))
-
-	//doc 5 byte dau tien de biet kind va length
-	kind, msg, err := readPacketSyncDataMsg(conn)
-	if err != nil {
-		q.logger.Warn(
-			"gossip: failed to read packet sync data msg",
-			"err", err,
-		)
-		return
-	}
-
-	switch kind {
-	case kindCheckSum:
-		//thuc hien check data khac biet
-		result := q.cluster.GetCheckRegisterAdapter().CompareAndFetch(msg.checksumData)
-
-		//khong co su khac biet tra ve kindOk
-		if result == nil {
-
-		}
-
-		//co su khac biet tra ve danh danh sach backend qua ben kia
-		//nhan danh sach back end cua ben kia tu so sanh
-		//neu chua co thi them vao neu co roi thi check version cua back end ai cao hon thi dung cai do cung luc dong ket noi tcp
-
-	default:
-		q.logger.Warn("gossip: unknown stream kind received", "kind", kind)
-	}
-}
-
 // ham xu li message duoc lan truyen tu cac node lb khac trong cluster
 func (q *broadcastQueue) NotifyMsg(b []byte) {
 	if len(b) == 0 {
@@ -180,14 +144,14 @@ func (q *broadcastQueue) LocalState(join bool) []byte {
 func (q *broadcastQueue) MergeRemoteState(buf []byte, join bool) {
 }
 
-func (q *broadcastQueue) buildSyncDataMsg(kind msgKind) SyncDataMsg {
-	msg := SyncDataMsg{
-		NodeName: q.cluster.GetSelfName(),
-		Data:     nil,
-	}
-	if kind == kindRequestFullData {
-		data := q.cluster.BuildSnapshot()
-		msg.Data = data
-	}
-	return msg
-}
+// func (q *broadcastQueue) buildSyncDataMsg(kind msgKind) SyncDataMsg {
+// 	msg := SyncDataMsg{
+// 		NodeName: q.cluster.GetSelfName(),
+// 		Data:     nil,
+// 	}
+// 	if kind == kindRequestFullData {
+// 		data := q.cluster.BuildSnapshot()
+// 		msg.Data = data
+// 	}
+// 	return msg
+// }
