@@ -8,15 +8,26 @@ import (
 	"github.com/nhutphuongasasa/loadbalancer/internal/model"
 )
 
-type Registry interface {
+type RegistryAdapter interface {
 	Register(srv *model.Server) error
 	Deregister(serviceName, instanceID string) error
 
-	UpdateStatus(srv *model.Server, alive bool)
+	UpdateStatus(serviceName, instanceID string, alive bool)
 
 	Discover(ctx context.Context, serviceName string) ([]*model.Server, error)
 
 	GetUpdateChan() <-chan *model.Server
+
+	ListAll() map[string][]*model.Server
+
+	GetVersionData() VersionData
+
+	MergeServices(incoming map[string]map[string]*model.Server)
+
+	FetchByServiceNames(names []string) map[string]map[string]*model.Server
+	RefreshAllChecksums()
+	GetChecksum() map[string]uint64
+	CompareAndFetch(remoteChecksums map[string]uint64) map[string]map[string]*model.Server
 }
 
 var GlobalBaseTransport = &http.Transport{

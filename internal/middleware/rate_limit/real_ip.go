@@ -9,8 +9,18 @@ import (
 type TrustedProxies []string
 
 func (t TrustedProxies) IsTrusted(ip string) bool {
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return false
+	}
 	for _, p := range t {
-		if p == ip || strings.HasPrefix(ip, p) {
+		if _, network, err := net.ParseCIDR(p); err == nil {
+			if network.Contains(parsed) {
+				return true
+			}
+			continue
+		}
+		if p == ip {
 			return true
 		}
 	}

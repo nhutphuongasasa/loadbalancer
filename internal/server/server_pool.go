@@ -57,23 +57,31 @@ func (p *ServerPool) listenUpdates() {
 	}
 }
 
+/*
+ham update thong tin nhom server khi co 1 server thay doi state
+khong can lock o day vi listienUPdate dam bao khi applyStateChange chay xong moi den thnag khac (do su ket hop select va channel)
+*/
 func (p *ServerPool) applyStateChange(srv *model.Server) {
 	p.logger.Debug("Health state changed",
 		"service", srv.ServiceName,
 		"id", srv.InstanceID,
 		"health", srv.Health,
 	)
-	p.mu.Lock()
-	defer p.mu.Unlock()
 
+	//sao chep du lieu ra slice
 	currentPtr := p.healthyAtomic.Load().(*map[string]*subPool)
 	current := *currentPtr
 
-	newMap := make(map[string]*subPool)
+	newMap := make(map[string]*subPool, len(current))
 	for k, v := range current {
 		newMap[k] = v
 	}
 
+	/*
+		kiem tra server name da co hay chua
+		neu chua co thi tao moi
+		neu co roi
+	*/
 	svcName := srv.ServiceName
 	oldSub, exists := newMap[svcName]
 
@@ -88,7 +96,12 @@ func (p *ServerPool) applyStateChange(srv *model.Server) {
 		oldBackends = []*model.Server{}
 	}
 
-	newList := make([]*model.Server, 0)
+	/*
+		duyet va kiem tra xem server da co san trong slice chua
+		neu da co thi check healthy
+		neu chua co th check healthy
+	*/
+	newList := make([]*model.Server, 0, len(oldBackends)+1)
 	found := false
 
 	for _, e := range oldBackends {
@@ -105,6 +118,8 @@ func (p *ServerPool) applyStateChange(srv *model.Server) {
 	if !found && srv.IsHealthy() {
 		newList = append(newList, srv)
 	}
+
+	strategy.Update(newList)
 
 	newMap[svcName] = &subPool{
 		backends: newList,
@@ -131,7 +146,7 @@ func (p *ServerPool) PickBackend(serviceName string, clientIP string) *model.Ser
 		return nil
 	}
 
-	return sub.strategy.Pick(sub.backends, clientIP)
+	return sub.strategy.Pick(clientIP)
 }
 
 func (p *ServerPool) GetInstanceServer(serviceName, instanceId string) *model.Server {
@@ -151,9 +166,9 @@ func (p *ServerPool) GetInstanceServer(serviceName, instanceId string) *model.Se
 			return nil
 		}
 	}
-
 	return nil
 }
+
 func (p *ServerPool) Close() {
 	p.logger.Info("Closing server pool")
 	close(p.done)

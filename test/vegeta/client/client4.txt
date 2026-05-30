@@ -1,0 +1,2 @@
+GET http://localhost:8080/java-service/hello
+Cookie: lb_sticky_id=KhYxfDFSjNnehzxcEjPBrGvi92XAzYLcNLMh4M_Yizxl5QpJTz_Xk6RhQDsELZkVL5ktmrdm4mN8MICNkLyRnTTlBXGfxfbGo-gT0beOUWfoaG96ID_OoA-GwUqIhRj0Z7ysqC8Z7iO62k_0cFPB9GIg73psfVIVdUqV9gHYjnO5LRtwz7cKckCmqn_wk_-efWl3e3znJUnYfVojtmcqm2GhppZQwIKreWe2ZvCXW5w; Path=/; Secure; HttpOnly; Expires=Wed, 25 Mar 2026 01:18:41 GMT;

@@ -1,9 +1,8 @@
 package strategies
 
-import (
-	"github.com/nhutphuongasasa/loadbalancer/internal/model"
-)
+import "github.com/nhutphuongasasa/loadbalancer/internal/model"
 
 type Strategy interface {
-	Pick(backends []*model.Server, clientIP string) *model.Server
+	Update(backends []*model.Server)
+	Pick(clientIP string) *model.Server
 }

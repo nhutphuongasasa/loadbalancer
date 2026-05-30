@@ -32,10 +32,10 @@ func GetRootDir() string {
 
 	return filepath.Dir(exePath)
 }
-func GetLogger(cfg *config.ConfigManager) *slog.Logger {
+
+func GetLogger(logCfg *config.LogConfig) *slog.Logger {
 	once.Do(func() {
 		var level slog.Level
-		logCfg := cfg.GetConfig().LogConfig
 		switch strings.ToLower(logCfg.Level) {
 		case "debug":
 			level = slog.LevelDebug
@@ -52,7 +52,10 @@ func GetLogger(cfg *config.ConfigManager) *slog.Logger {
 			AddSource: level == slog.LevelDebug,
 		}
 
-		logFile, err := os.OpenFile("app.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+		root := GetRootDir()
+		logPath := filepath.Join(root, "app.log")
+
+		logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 		var output io.Writer = os.Stdout // Mặc định là Terminal
 
 		if err == nil {

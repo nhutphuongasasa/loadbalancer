@@ -1,84 +1,118 @@
 package strategies
 
 import (
-	"math"
 	"sync"
 
 	"github.com/nhutphuongasasa/loadbalancer/internal/model"
 )
 
-type WeightedServer struct {
-	server          *model.Server
-	effectiveWeight int // điều chỉnh theo health
-	currentWeight   int // biến đổi trong quá trình chọn
+type wrrEntry struct {
+	server        *model.Server
+	weight        int64
+	currentWeight int64
+}
+
+type view struct {
+	entries     []*wrrEntry
+	totalWeight int64
 }
 
 type WeightedRoundRobin struct {
-	mu sync.Mutex // bảo vệ danh sách weighted servers nếu cần rebuild
+	mu   sync.Mutex
+	view *view
 }
 
 func NewWeightedRoundRobin() Strategy {
 	return &WeightedRoundRobin{}
 }
 
-// Pick chọn server theo smooth weighted round-robin
-func (w *WeightedRoundRobin) Pick(backends []*model.Server, _ string) *model.Server {
-	if len(backends) == 0 {
-		return nil
+// thay doi danh sach server
+func (w *WeightedRoundRobin) Update(backends []*model.Server) {
+	entries := make([]*wrrEntry, 0, len(backends))
+	var total int64
+
+	oldView := func() *view {
+		w.mu.Lock()
+		v := w.view
+		w.mu.Unlock()
+		return v
+	}()
+
+	//luu 1 ban sao current weight cua cac server
+	preserve := make(map[string]int64, len(backends))
+	if oldView != nil {
+		for _, e := range oldView.entries {
+			preserve[e.server.GetID()] = e.currentWeight
+		}
 	}
 
-	var totalWeight int
-	weighted := make([]*WeightedServer, 0, len(backends))
-
+	//duyet danh sach backend moi nhat duoc cap nhat
+	//dua current weight cu vao neu khong co trong danh sach cu thi khoi tao current bang 0
+	//dua vao dnah sach entries
 	for _, s := range backends {
 		if !s.IsHealthy() {
-			continue // hoặc giảm weight thay vì skip hoàn toàn
+			continue
+		}
+		wt := int64(s.GetWeight())
+		if wt <= 0 {
+			wt = 1
+		}
+		total += wt
+
+		entry := &wrrEntry{
+			server:        s,
+			weight:        wt,
+			currentWeight: 0,
+		}
+		if oldCW, ok := preserve[s.GetID()]; ok {
+			entry.currentWeight = oldCW
 		}
 
-		weight := s.GetWeight()
-		if weight <= 0 {
-			weight = 1
-		}
-
-		ws := &WeightedServer{
-			server:          s,
-			effectiveWeight: weight,
-			currentWeight:   weight, // khởi tạo ban đầu = weight
-		}
-		weighted = append(weighted, ws)
-		totalWeight += ws.effectiveWeight
+		entries = append(entries, entry)
 	}
 
-	if len(weighted) == 0 || totalWeight == 0 {
-		// fallback: chọn server đầu tiên hoặc random, tùy bạn
-		if len(backends) > 0 {
-			return backends[0]
-		}
-		return nil
+	newView := &view{
+		entries:     entries,
+		totalWeight: total,
 	}
 
-	var best *WeightedServer
-	var bestCurrentWeight = math.MinInt
+	// Swap view trong lock de tranh race
+	w.mu.Lock()
+	w.view = newView
+	w.mu.Unlock()
+}
 
+func (w *WeightedRoundRobin) Pick(_ string) *model.Server {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	// Tăng currentWeight cho tất cả và tìm max
-	for _, ws := range weighted {
-		ws.currentWeight += ws.effectiveWeight
-
-		if ws.currentWeight > bestCurrentWeight {
-			best = ws
-			bestCurrentWeight = ws.currentWeight
-		}
-	}
-
-	if best == nil {
+	v := w.view
+	if v == nil || len(v.entries) == 0 {
 		return nil
 	}
 
-	// Chọn và trừ tổng weight để "smooth"
-	best.currentWeight -= totalWeight
+	// Fast path khi chi co 1 server
+	if len(v.entries) == 1 {
+		return v.entries[0].server
+	}
+
+	//khoi tao bien bestVal dung for de kiem gia tri lon nhat
+	//sau do tru cho tong weight cua ca cum server de no quay ve current weight thap
+	//viec chon total weight la co chung minh toan hoc no la 1 con so tot
+	var best *wrrEntry
+	bestVal := int64(-1 << 63) // MinInt64
+
+	for _, e := range v.entries {
+		e.currentWeight += e.weight
+		if e.currentWeight > bestVal {
+			bestVal = e.currentWeight
+			best = e
+		}
+	}
+
+	if best != nil {
+		best.currentWeight -= v.totalWeight
+	}
 
 	return best.server
 }

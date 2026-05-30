@@ -1,53 +1,58 @@
+// strategies/ip_hash.go
 package strategies
 
 import (
 	"hash/crc32"
 	"net"
 	"strings"
+	"sync/atomic"
 
 	"github.com/nhutphuongasasa/loadbalancer/internal/model"
 )
 
-type IPHash struct{}
+type iphashView struct {
+	servers []*model.Server
+}
 
-func NewIPHash() *IPHash {
+type IPHash struct {
+	ptr atomic.Pointer[iphashView]
+}
+
+func NewIPHash() Strategy {
 	return &IPHash{}
 }
 
-func (ih *IPHash) Pick(servers []*model.Server, clientIP string) *model.Server {
-	if len(servers) == 0 {
+// Update: chỉ chạy ở single-writer (applyStateChange)
+func (ih *IPHash) Update(backends []*model.Server) {
+	if len(backends) == 0 {
+		ih.ptr.Store(nil)
+		return
+	}
+
+	// Copy slice để atomic swap an toàn (không bị mutate từ ngoài)
+	servers := make([]*model.Server, len(backends))
+	copy(servers, backends)
+
+	ih.ptr.Store(&iphashView{servers: servers})
+}
+
+// Pick: hoàn toàn lock-free, hot-path cực nhanh
+func (ih *IPHash) Pick(clientIP string) *model.Server {
+	view := ih.ptr.Load()
+	if view == nil || len(view.servers) == 0 {
 		return nil
 	}
 
 	ip := extractIP(clientIP)
 	if ip == "" {
-		return ih.fallback(servers)
+		// fallback: lấy server đầu tiên trong danh sách healthy
+		return view.servers[0]
 	}
 
 	hash := crc32.ChecksumIEEE([]byte(ip))
+	index := int(hash % uint32(len(view.servers)))
 
-	// Chỉ xét healthy servers
-	var healthy []*model.Server
-	for _, srv := range servers {
-		if srv.IsHealthy() {
-			healthy = append(healthy, srv)
-		}
-	}
-
-	if len(healthy) == 0 {
-		return ih.fallback(servers)
-	}
-
-	index := int(hash % uint32(len(healthy)))
-
-	return healthy[index]
-}
-
-func (ih *IPHash) fallback(servers []*model.Server) *model.Server {
-	if len(servers) == 0 {
-		return nil
-	}
-	return servers[0] // hoặc random nếu muốn
+	return view.servers[index]
 }
 
 func extractIP(addr string) string {

@@ -7,19 +7,22 @@ import (
 	"net/http"
 
 	"log/slog"
+
+	circuitBreaker "github.com/nhutphuongasasa/loadbalancer/internal/resilience/circuitbreaker"
+	"github.com/nhutphuongasasa/loadbalancer/internal/resilience/retry"
 )
 
 type ResilientTransport struct {
 	base        http.RoundTripper
-	breaker     CircuitBreaker
-	retryPolicy RetryPolicy
+	breaker     circuitBreaker.CircuitBreaker
+	retryPolicy retry.RetryPolicy
 	logger      *slog.Logger
 }
 
 func NewResilientTransport(
 	base http.RoundTripper,
-	breaker CircuitBreaker,
-	retryPolicy RetryPolicy,
+	breaker circuitBreaker.CircuitBreaker,
+	retryPolicy retry.RetryPolicy,
 	logger *slog.Logger,
 ) *ResilientTransport {
 	if logger == nil {
@@ -64,9 +67,11 @@ func (t *ResilientTransport) RoundTrip(req *http.Request) (*http.Response, error
 			}
 
 			if resp.StatusCode >= 500 {
+				// [FIX 2026-04-24] luu statusCode truoc khi resp = nil tranh nil dereference panic
+				code := resp.StatusCode
 				_ = resp.Body.Close()
 				resp = nil
-				return nil, fmt.Errorf("backend error status: %d", resp.StatusCode)
+				return nil, fmt.Errorf("backend error status: %d", code)
 			}
 
 			return resp, nil
