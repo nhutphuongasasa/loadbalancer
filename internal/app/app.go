@@ -11,6 +11,7 @@ import (
 
 	"github.com/nhutphuongasasa/loadbalancer/internal/cache"
 	"github.com/nhutphuongasasa/loadbalancer/internal/config"
+	"github.com/nhutphuongasasa/loadbalancer/internal/gossip_registry"
 	"github.com/nhutphuongasasa/loadbalancer/internal/middleware"
 	"github.com/nhutphuongasasa/loadbalancer/internal/registry/memory"
 	"github.com/nhutphuongasasa/loadbalancer/internal/registry/provider"
@@ -31,6 +32,8 @@ type App struct {
 	providerServer *provider.ProviderServer
 	resilience     *resilience.ResilientTransport
 	cacheShared    *cache.CacheClient
+	// [FIX 2026-04-24] them gossip factory de quan li cluster LB voi sidecar agents
+	gossip         *gossip_registry.GossipFactory
 	logger         *slog.Logger
 	ctx            context.Context
 	cancel         context.CancelFunc
@@ -89,6 +92,27 @@ func NewApp(rootDir string) (*App, error) {
 	certDir := filepath.Join(rootDir, "keys")
 	tlsMgr := initTLSManager(certDir, logger)
 
+	// [FIX 2026-04-24] khoi tao GossipFactory neu co cluster config trong config.yml
+	// ket noi LB cluster + nhan event tu sidecar agents qua Memberlist
+	var gossipFactory *gossip_registry.GossipFactory
+	if clusterCfg := cfgManager.GetClusterConfig(); clusterCfg != nil && clusterCfg.NodeName != "" {
+		gossipFactory = gossip_registry.NewGossipRegistry(
+			gossip_registry.Options{
+				NodeName:      clusterCfg.NodeName,
+				BindPort:      clusterCfg.BindPort,
+				AdvertisePort: clusterCfg.AdvertisePort,
+				Logger:        logger,
+			},
+			reg,
+		)
+		logger.Info("[Gossip] GossipFactory initialized",
+			"node", clusterCfg.NodeName,
+			"bind_port", clusterCfg.BindPort,
+		)
+	} else {
+		logger.Warn("[Gossip] No cluster config found, running in standalone mode")
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &App{
@@ -103,6 +127,8 @@ func NewApp(rootDir string) (*App, error) {
 		cancel:         cancel,
 		cacheShared:    cache,
 		providerServer: providerServer,
+		// [FIX 2026-04-24] luu gossipFactory vao App de Start/Stop vong doi
+		gossip:         gossipFactory,
 	}, nil
 }
 
@@ -121,12 +147,34 @@ func (a *App) StartSubService() {
 		a.registry.Start()
 	}
 
+	// [FIX 2026-04-24] khoi dong GossipFactory sau khi registry da san sang
+	if a.gossip != nil {
+		clusterCfg := a.configManager.GetClusterConfig()
+		if err := a.gossip.Start(
+			gossip_registry.Options{
+				NodeName:      clusterCfg.NodeName,
+				BindPort:      clusterCfg.BindPort,
+				AdvertisePort: clusterCfg.AdvertisePort,
+				Logger:        a.logger,
+			},
+			clusterCfg.Seeds,
+		); err != nil {
+			a.logger.Error("[Gossip] Failed to start gossip cluster", "err", err)
+		} else {
+			a.logger.Info("[Gossip] Cluster started successfully")
+		}
+	}
 }
 
 func (a *App) StopSubService() {
 	a.logger.Info("Shutting down Load Balancer...")
 
 	a.cancel()
+
+	// [FIX 2026-04-24] dung gossip truoc khi dong cac service khac
+	if a.gossip != nil {
+		a.gossip.Stop()
+	}
 
 	if a.chainSecurity.Limiter() != nil {
 		a.chainSecurity.Limiter().Stop()

@@ -16,10 +16,12 @@ type EventDelegate struct {
 
 func newEventDelegate(
 	cd *ClusterDelegate,
+	ad *AgentDelegate,
 	log *slog.Logger,
 ) *EventDelegate {
 	return &EventDelegate{
 		clusterDelegate: cd,
+		agentDelegate:   ad,
 		logger:          log,
 	}
 }

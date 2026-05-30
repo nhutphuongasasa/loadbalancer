@@ -77,7 +77,12 @@ func (r *InMemoryRegistry) setupNewInstance(srv *model.Server) {
 
 	r.services[srv.ServiceName][srv.InstanceID] = srv
 
-	r.updateChan <- srv
+	// [FIX 2026-04-24] dung non-blocking send tranh deadlock khi giu mutex ma channel day
+	select {
+	case r.updateChan <- srv:
+	default:
+		r.logger.Warn("updateChan full, dropping register update", "instance", srv.InstanceID)
+	}
 }
 
 /*
@@ -94,7 +99,12 @@ func (r *InMemoryRegistry) Deregister(serviceName, instanceID string) error {
 				delete(r.services, serviceName)
 			}
 
-			r.updateChan <- srv
+			// [FIX 2026-04-24] dung non-blocking send tranh deadlock khi giu mutex ma channel day
+			select {
+			case r.updateChan <- srv:
+			default:
+				r.logger.Warn("updateChan full, dropping deregister update", "instance", instanceID)
+			}
 
 			if len(instances) == 0 {
 				r.removeWorkerLocked(serviceName)
@@ -122,10 +132,15 @@ func (r *InMemoryRegistry) UpdateStatus(serviceName, instanceID string, alive bo
 			wasHealthy := existing.IsHealthy()
 			existing.SetAlive(alive)
 
-			// day vao channel de update server_pool
-			r.updateChan <- existing
+			// [FIX 2026-04-24] dung non-blocking send tranh deadlock khi giu mutex ma channel day
+			select {
+			case r.updateChan <- existing:
+			default:
+				r.logger.Warn("updateChan full, dropping status update", "instance", instanceID)
+			}
 			r.updateGlobalInstanceVersionData(registry.VersionDataBackend + 1)
-			r.isDirty = registry.GlobalBaseTransport.Clone().Protocols.UnencryptedHTTP2()
+			// [FIX 2026-04-24] isDirty phai la bool, sua lai tu gia tri sai kieu truoc do
+			r.isDirty = true
 			r.logger.Debug("Health state changed",
 				"service", serviceName,
 				"id", instanceID,
@@ -187,6 +202,13 @@ func (r *InMemoryRegistry) updateGlobalInstanceVersionData(version registry.Vers
 	registry.VersionDataBackend = registry.VersionData(version)
 }
 
+// [FIX 2026-04-24] implement GetVersionData de thoa man RegistryAdapter interface
+func (r *InMemoryRegistry) GetVersionData() registry.VersionData {
+	r.mux.RLock()
+	defer r.mux.RUnlock()
+	return registry.VersionDataBackend
+}
+
 // MergeServices nhận data từ peer và merge vào registry:
 // - Service/instance chưa có -> thêm vào
 // - Service/instance đã có -> giữ cái có version cao hơn
@@ -245,4 +267,20 @@ func (r *InMemoryRegistry) FetchByServiceNames(names []string) map[string]map[st
 		}
 	}
 	return result
+}
+
+// [FIX 2026-04-24] checksumRefresher tu dong goi RefreshAllChecksums moi 5 giay neu co thay doi
+// tranh truong hop gossip sync luon thay du lieu "khac" vi checksum chua duoc cap nhat
+func (r *InMemoryRegistry) checksumRefresher() {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	defer r.wg.Done()
+	for {
+		select {
+		case <-ticker.C:
+			r.RefreshAllChecksums()
+		case <-r.ctx.Done():
+			return
+		}
+	}
 }

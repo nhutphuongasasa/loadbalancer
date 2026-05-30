@@ -67,9 +67,11 @@ func (t *ResilientTransport) RoundTrip(req *http.Request) (*http.Response, error
 			}
 
 			if resp.StatusCode >= 500 {
+				// [FIX 2026-04-24] luu statusCode truoc khi resp = nil tranh nil dereference panic
+				code := resp.StatusCode
 				_ = resp.Body.Close()
 				resp = nil
-				return nil, fmt.Errorf("backend error status: %d", resp.StatusCode)
+				return nil, fmt.Errorf("backend error status: %d", code)
 			}
 
 			return resp, nil

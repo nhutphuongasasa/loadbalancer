@@ -45,7 +45,8 @@ type LBMeta struct {
 	NodeName      string `json:"node_name"`
 	AdvertisePort int    `json:"advertise_port"`
 	BindPort      int    `json:"bind_port"`
-	// DataVersion   int64  `json:"data_version"`
+	// [FIX 2026-04-24] them SyncPort: port rieng cho TCP custom sync stream (= BindPort + 1000)
+	SyncPort int `json:"sync_port"`
 }
 
 func roleFromRaw(raw []byte) string {
@@ -62,6 +63,8 @@ type LBNodeInfo struct {
 	Name     string
 	Host     string
 	BindPort int
+	// [FIX 2026-04-24] them SyncPort de luu port TCP sync cua peer LB
+	SyncPort int
 	JoinedAt time.Time
 }
 

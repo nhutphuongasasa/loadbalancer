@@ -127,10 +127,11 @@ func DefaultCircuitBreakerConfig() *CircuitBreakerConfig {
 }
 
 type ClusterConfig struct {
-	Seed          string `mapstructure:"seed"`
-	NodeName      string `mapstructure:"node_name"`
-	BindPort      int    `mapstructure:"bind_port"`
-	AdvertisePort int    `mapstructure:"advertise_port"`
+	// [FIX 2026-04-24] chuyen thanh mang hien thi nhieu seed node cho viec join mang ban dau
+	Seeds         []string `mapstructure:"seed"`
+	NodeName      string   `mapstructure:"node_name"`
+	BindPort      int      `mapstructure:"bind_port"`
+	AdvertisePort int      `mapstructure:"advertise_port"`
 }
 
 type resultConfig struct {

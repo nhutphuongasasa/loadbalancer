@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"net"
 	"time"
-
-	"github.com/hashicorp/memberlist"
 )
 
 type SyncDataMsg struct {
@@ -14,13 +12,15 @@ type SyncDataMsg struct {
 	Data         map[string][]BackendSnapshot `json:"data"`
 }
 
-func (g *GossipFactory) SyncDataViaStream(n *memberlist.Node) {
-	address := net.JoinHostPort(n.Addr.String(), fmt.Sprintf("%d", n.Port))
+// [FIX 2026-04-24] SyncDataViaStream nhan host va syncPort thay vi *memberlist.Node
+// tranh dung n.Port (port cua Memberlist) - can port rieng cho TCP sync
+func (g *GossipFactory) SyncDataViaStream(peerHost string, syncPort int) {
+	address := net.JoinHostPort(peerHost, fmt.Sprintf("%d", syncPort))
 	conn, err := net.DialTimeout("tcp", address, 5*time.Second)
 	if err != nil {
 		g.logger.Warn(
 			"gossip: cannot dial for stream sync",
-			"node", n.Name,
+			"address", address,
 			"err", err,
 		)
 		return
@@ -28,7 +28,7 @@ func (g *GossipFactory) SyncDataViaStream(n *memberlist.Node) {
 	defer conn.Close()
 
 	//gui request checksum data
-	req := g.buildSyncDataMsg(kindCheckSum)
+	req := g.buildSyncDataMsg()
 
 	if err := writePacket(conn, kindCheckSum, req); err != nil {
 		g.logger.Warn(
@@ -43,7 +43,7 @@ func (g *GossipFactory) SyncDataViaStream(n *memberlist.Node) {
 	if err != nil {
 		g.logger.Warn(
 			"gossip: failed to read sync response in stream sync",
-			"node", n.Name,
+			"address", address,
 		)
 		return
 	}
@@ -87,15 +87,14 @@ func (g *GossipFactory) SyncDataViaStream(n *memberlist.Node) {
 
 }
 
-func (g *GossipFactory) buildSyncDataMsg(kind msgKind) SyncDataMsg {
+// [FIX 2026-04-24] xoa tham so kind khong duoc su dung; ham chi can checksum hien tai
+func (g *GossipFactory) buildSyncDataMsg() SyncDataMsg {
 	checksumData := g.cluster.reg.GetChecksum()
-	msg := SyncDataMsg{
+	return SyncDataMsg{
 		NodeName:     g.cluster.selfName,
 		ChecksumData: checksumData,
 		Data:         nil,
 	}
-
-	return msg
 }
 
 func serviceNamesFrom(data map[string][]BackendSnapshot) []string {

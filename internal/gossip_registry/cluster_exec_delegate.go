@@ -8,8 +8,10 @@ import (
 )
 
 type ClusterDelegate struct {
-	manager *ClusterManager
-	logger  *slog.Logger
+	manager  *ClusterManager
+	logger   *slog.Logger
+	// [FIX 2026-04-24] callback de trigger TCP sync voi LB peer moi join
+	syncFunc func(host string, syncPort int)
 }
 
 func newClusterDelegate(m *ClusterManager, log *slog.Logger) *ClusterDelegate {
@@ -17,6 +19,11 @@ func newClusterDelegate(m *ClusterManager, log *slog.Logger) *ClusterDelegate {
 		manager: m,
 		logger:  log,
 	}
+}
+
+// [FIX 2026-04-24] inject ham sync duoc goi khi co LB moi join
+func (d *ClusterDelegate) setSyncFunc(fn func(host string, syncPort int)) {
+	d.syncFunc = fn
 }
 
 // duoc goi khi co LB node join cluster.
@@ -33,14 +40,22 @@ func (d *ClusterDelegate) OnLBJoin(n *memberlist.Node) {
 		Name:     n.Name,
 		Host:     nodeHost(n),
 		BindPort: meta.BindPort,
-		// HTTPAPI:  meta.HTTPAPI,
+		// [FIX 2026-04-24] luu SyncPort tu meta de goi TCP sync sau nay
+		SyncPort: meta.SyncPort,
 	}
 	d.manager.onLBJoin(info)
+
+	// [FIX 2026-04-24] trigger TCP sync de dong bo du lieu backend voi LB peer moi join
+	if d.syncFunc != nil && info.SyncPort > 0 {
+		go d.syncFunc(info.Host, info.SyncPort)
+	}
+
 	d.logger.Info(
 		"gossip: LB node joined cluster",
 		"node", n.Name,
 		"host", info.Host,
 		"bind_port", meta.BindPort,
+		"sync_port", meta.SyncPort,
 	)
 }
 

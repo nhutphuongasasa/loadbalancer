@@ -69,6 +69,9 @@ func (r *InMemoryRegistry) Start() {
 		go r.ServerGate()
 		r.wg.Add(1)
 		go r.cleanUpServerList()
+		// [FIX 2026-04-24] khoi dong checksumRefresher de tu dong cap nhat checksum cho gossip sync
+		r.wg.Add(1)
+		go r.checksumRefresher()
 		r.logger.Info("Start registry successfully")
 	})
 }

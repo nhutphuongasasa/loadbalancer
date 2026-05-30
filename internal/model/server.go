@@ -79,12 +79,7 @@ func NewServer(
 		proxy.Transport = transport
 	}
 
-	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		http.Error(w, "Backend service unreachable or unavailable", http.StatusServiceUnavailable)
-	}
-
-	proxy.Transport = transport
-
+	// [FIX 2026-04-24] xoa code trung lap proxy.ErrorHandler va proxy.Transport bi khai bao 2 lan
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		http.Error(w, "Backend service unreachable or unavailable", http.StatusServiceUnavailable)
 	}
@@ -100,6 +95,8 @@ func NewServer(
 		TTL:         30 * time.Second,
 		Weight:      weight,
 		proxy:       proxy,
+		// [FIX 2026-04-24] khoi tao version = 1 de MergeServices so sanh version hoat dong dung
+		version:     1,
 	}
 }
 
@@ -143,6 +140,8 @@ func (s *Server) SetAlive(status bool) {
 	if status {
 		s.LastSeen = time.Now()
 	}
+	// [FIX 2026-04-24] tang version moi khi trang thai thay doi de MergeServices chon dung phien ban moi nhat
+	s.version++
 	s.mux.Unlock()
 }
 
